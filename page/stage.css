@@ -156,7 +156,7 @@
 .stage-sprite:has([data-pose="attack"]) [data-pose="idle"] { display: var(--stage-attack-idle, flex); }
 .stage-frames[data-pose="attack"] { display: var(--stage-attack-display, none); }
 .stage-frames[data-pose="attack"][data-pair] { animation: pet-stage-frames 235ms steps(1, jump-end) both; }
-.fighter:not([data-empty="true"]) > .stage-portrait:not([data-beat], [data-outcome], [data-sprite]) .stage-pet {
+.fighter:not([data-empty="true"]) > .stage-portrait:not([data-beat], [data-outcome], [data-sprite], [data-down]) .stage-pet {
   animation: pet-stage-idle 2.15s ease-in-out infinite;
 }
 
@@ -194,12 +194,13 @@
   animation: pet-stage-recover 250ms ease-out both;
 }
 .stage-portrait[data-move="heavy"][data-beat="prep"] .stage-pet { animation-timing-function: cubic-bezier(.7, 0, .9, 1); }
-.stage-portrait[data-move="heavy"][data-beat="impact"] .stage-effect {
+.stage-portrait[data-move="heavy"][data-beat="impact"] .stage-pet { animation: pet-stage-heavy-recover 250ms linear both; }
+.battle-stage[data-shake="heavy"] .stage-portrait[data-hit] .stage-effect {
   border-color: #ffd49d;
-  box-shadow: 0 0 11px #ffc585ac;
+  box-shadow: 0 0 16px #ffc585, inset 0 0 14px #ffe0a9;
   animation: pet-stage-effect 245ms ease-out both;
 }
-.stage-portrait[data-move="break"][data-beat="impact"] .stage-effect {
+.stage-portrait[data-impact="break"][data-hit] .stage-effect {
   border: 0;
   border-radius: 0;
   background: linear-gradient(128deg, transparent 43%, #ffe4b4 47%, #ffad62 50%, transparent 56%);
@@ -221,13 +222,13 @@
   background: radial-gradient(ellipse, #ffe07966, transparent 70%);
   animation: pet-stage-effect 230ms ease-out both;
 }
-.stage-portrait[data-move="heal"][data-beat="settle"] .stage-effect {
+.stage-portrait[data-move="heal"][data-beat="impact"] .stage-effect {
   border-color: #acffca;
   background: radial-gradient(ellipse, #91ffb763, transparent 72%);
   box-shadow: 0 0 14px #7ef2ad75;
   animation: pet-stage-effect 310ms ease-out both;
 }
-.stage-portrait[data-move="flare"][data-beat="impact"] .stage-effect {
+.stage-portrait[data-move="flare"][data-beat="prep"] .stage-effect {
   border: 0;
   inset: 37% auto auto 35%;
   width: 30%;
@@ -239,18 +240,18 @@
   filter: drop-shadow(0 0 4px var(--flame-edge));
   animation: pet-stage-projectile 290ms ease-out both;
 }
-.stage-portrait[data-move="flare"][data-effect="blue-flame"][data-beat="impact"] .stage-effect {
+.stage-portrait[data-move="flare"][data-effect="blue-flame"][data-beat="prep"] .stage-effect {
   --flame-edge: #3169fc;
   --flame-core: #ccf9ff;
 }
-.stage-portrait[data-move="flare"][data-effect="magic-flame"][data-beat="impact"] .stage-effect {
+.stage-portrait[data-move="flare"][data-effect="magic-flame"][data-beat="prep"] .stage-effect {
   background: conic-gradient(from 30deg, transparent 12%, #5af7a2 43%, #ecffba 48%, transparent 52%, #78f2b9 89%, transparent);
 }
-.stage-portrait[data-move="flare"][data-effect="gust"][data-beat="impact"] .stage-effect {
+.stage-portrait[data-move="flare"][data-effect="gust"][data-beat="prep"] .stage-effect {
   border-radius: 50%;
   background: repeating-radial-gradient(ellipse, transparent 0 20%, #d6fcff 24%, transparent 28%);
 }
-.stage-portrait[data-move="flare"][data-effect="spark"][data-beat="impact"] .stage-effect {
+.stage-portrait[data-move="flare"][data-effect="spark"][data-beat="prep"] .stage-effect {
   clip-path: polygon(59% 0, 31% 49%, 57% 49%, 40% 100%, 78% 39%, 52% 39%, 70% 0);
   background: linear-gradient(#f4ff93, #ffa84c);
 }
@@ -285,7 +286,8 @@
   transform: translateY(-10%) scale(1.09) rotate(calc(var(--stage-direction) * -7deg));
   filter: drop-shadow(0 0 8px #fff0b496);
 }
-.stage-portrait[data-outcome="loss"] .stage-pet {
+.stage-portrait[data-down] .stage-frames { animation-play-state: paused; }
+.stage-portrait:is([data-outcome="loss"], [data-down]:not([data-outcome])) .stage-pet {
   transform: translateY(13%) scale(.96, .77) rotate(calc(var(--stage-direction) * -12deg));
   filter: saturate(.38);
 }
@@ -305,6 +307,10 @@
   from { transform: translateX(calc(var(--stage-direction) * var(--stage-lunge))) translateY(-12%) scale(1.07); }
   to { transform: none; }
 }
+@keyframes pet-stage-heavy-recover {
+  0%, 24% { transform: translateX(calc(var(--stage-direction) * var(--stage-lunge))) translateY(-12%) scale(1.07); animation-timing-function: ease-out; }
+  100% { transform: none; }
+}
 @keyframes pet-stage-counter {
   0% { transform: scale(.95, .85); }
   38% { transform: translateX(calc(var(--stage-direction) * var(--stage-lunge))) translateY(-18%) scale(1.1); }
@@ -322,7 +328,26 @@
   100% { opacity: 0; transform: scale(1.17); }
 }
 
+.stage-portrait[data-hit] .stage-pet { animation: pet-stage-recoil 210ms ease-out both; }
+.stage-amount { position: absolute; z-index: 2; inset: 1% auto auto 50%; color: #ffd0bd; font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px #111; }
+.stage-amount[data-kind] { animation: pet-stage-float 360ms ease-out both; }
+.stage-amount[data-kind="heal"] { color: #adffd1; }
+.stage-amount[data-kind="counter"] { color: #a7e0ff; }
+.stage-portrait[data-counter] .stage-effect,
+.battle-stage[data-shake="counter"] .stage-portrait[data-hit] .stage-effect {
+  border-color: #9fe3ff;
+  box-shadow: 0 0 15px #6acbff, inset 0 0 12px #9fe3ff;
+  animation: pet-stage-effect 240ms ease-out both;
+}
+.battle-stage[data-shake] { --shake: 2px; animation: pet-stage-shake 165ms ease-out; }
+.battle-stage[data-shake="heavy"] { --shake: 4px; }
+.stage-portrait[data-move="revive"][data-beat="impact"] .stage-effect { border-color: #a7ffd3; box-shadow: 0 0 20px #72ffc9, inset 0 0 15px #72ffc9; animation: pet-stage-effect 310ms ease-out both; }
+@keyframes pet-stage-shake { 24% { transform: translateX(var(--shake)); } 60% { transform: translateX(calc(-1 * var(--shake))); } }
+@keyframes pet-stage-float { from { opacity: 1; transform: translate(-50%, 2px); } to { opacity: .15; transform: translate(-50%, -18px); } }
+@keyframes pet-stage-recoil { 22% { transform: translateX(calc(var(--stage-direction) * -9px)) rotate(calc(var(--stage-direction) * 5deg)); filter: brightness(1.75); } }
+
 @media (prefers-reduced-motion: reduce) {
+  .battle-stage, .stage-amount { animation: none !important; }
   .stage-portrait .stage-pet,
   .stage-portrait .stage-effect,
   .stage-portrait .stage-frames { animation: none !important; }

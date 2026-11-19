@@ -88,10 +88,11 @@
         <button id="resume" type="button" class="button secondary resume">恢复上次对战</button>
         <details class="rules" id="rules">
           <summary>对战规则</summary>
-          <p>宠物图鉴中的物种对应强攻型、坚守型或耐力型，三种配置的基础属性总点数相同。准备前需给攻击、防御和体力分完 6 点，并选两项技能。双方都能看到已保存的配置，准备后配置锁定。</p>
-          <p>每回合限时 45 秒。双方各选一次普攻、物种固有技能或已装备的技能，招式锁定后同时结算。使用技能前请查看能量和冷却。只有一方超时时，该方额外损失 5 点生命；双方都超时则无额外扣血。</p>
-          <p>任一方生命耗尽，或打满 12 回合时，对战结束。剩余生命百分比较高的一方获胜，百分比相同则平局。</p>
-          <p>单场战绩分：胜利 +3，平局 +1，落败 −1，开战后主动退出按 −3 结算。至少出招一次才能获得正向赛果分，每次超时另扣 1 分。战绩只属于本场对战。</p>
+          <p>准备前，在攻击、防御和耐力之间分配 6 点属性，并装备两项通用技能。双方可查看已保存的配置，准备后锁定。</p>
+          <p>开局随机决定先手。双方交替行动，每手 60 秒，出招立即结算。超时占用本手并扣 5 点生命。体力用于施放技能，冷却按自己的行动计数。</p>
+          <p>开局后手装备复活且仍有行动次数时，倒地后可在 60 秒内选择复活或放弃。复活恢复 30% 最大生命（向上取整），占用一手，每场限一次。</p>
+          <p>倒地及复活判定完成后结算胜负。双方各行动 12 次后按剩余生命比例判定，比例相同为平局。</p>
+          <p>胜利获得 3 Token，平局获得 1 Token，落败扣 1 Token，主动认负扣 3 Token。至少出招一次才能获得正向奖励，每次超时另扣 1 Token，余额最低为零。</p>
         </details>
       </section>
 
@@ -164,7 +165,7 @@
             <div class="point-fields">
               <label>攻击<input type="number" name="attack" min="0" step="1" required></label>
               <label>防御<input type="number" name="defense" min="0" step="1" required></label>
-              <label>体力<input type="number" name="vitality" min="0" step="1" required></label>
+              <label>耐力<input type="number" name="vitality" min="0" step="1" required></label>
             </div>
             <p id="point-summary" class="form-summary" role="status"></p>
           </fieldset>
@@ -180,6 +181,7 @@
         </form>
         <section id="round-controls" class="panel round-controls" hidden aria-labelledby="moves-title">
           <h2 id="moves-title">选择招式</h2>
+          <p class="form-summary" id="move-help"></p>
           <div class="moves" id="move-buttons"></div>
         </section>
         <details class="panel rules history" id="history" hidden>

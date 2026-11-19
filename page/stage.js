@@ -1,9 +1,5 @@
 const SIDES = ["self", "opponent"];
-const MOVES = {
-  attack: "普攻", break: "破甲", shield: "护盾", counter: "反击",
-  charge: "蓄力", heavy: "重击", heal: "回复",
-};
-const ATTACKS = new Set(["attack", "break", "heavy", "flare", "tide"]);
+const ATTACKS = new Set(["attack", "break", "heavy", "tide"]);
 const PALETTES = [164, 204, 267, 324, 22, 47];
 
 function layer(parent, tag, className) {
@@ -24,10 +20,11 @@ function makeFighter(board, side) {
   layer(art, "span", "stage-face");
   const sprite = layer(body, "span", "stage-sprite");
   layer(portrait, "span", "stage-effect");
+  const amount = layer(portrait, "span", "stage-amount");
   const badge = layer(card, "p", "stage-badge");
   portrait.after(badge);
   badge.hidden = true;
-  return { card, portrait, badge, sprite, key: null, health: card.querySelector(".health"),
+  return { portrait, badge, sprite, amount, key: null, health: card.querySelector(".health"),
     healthLabel: card.querySelector(".health-label") };
 }
 
@@ -85,31 +82,14 @@ function showPet(fighter, pet, framesFor) {
   });
 }
 
-function directDamage(action, opponent) {
-  return Math.max(0, action.damage - opponent.counter);
-}
-
-function describe(round, action, opponent, rules, step) {
-  const move = action.move;
-  const name = action.name || rules?.skills?.[move]?.name || MOVES[move] || "超时";
-  const pieces = [`第 ${round} 回合`, name];
-  const damage = step >= 2 ? action.damage : directDamage(action, opponent);
-  if (step >= 1 && damage > 0) pieces.push(`受伤 ${damage}`);
-  if (step >= 2 && action.counter > 0) pieces.push(`反击 ${action.counter}`);
-  if (step >= 3 && action.healing > 0) pieces.push(`回复 ${action.healing}`);
-  if (step >= 3 && action.penalty > 0) pieces.push(`超时扣血 ${action.penalty}`);
-  return pieces.join(" · ");
-}
-
-export function createStage(board, token) {
+export function createStage(board, token, onComplete) {
   const fighters = SIDES.map((side) => makeFighter(board, side));
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const base = new URL(window.location.href);
   const frameCache = new Map();
   let previous = null;
-  let current = null;
   let timers = [];
-  let heldHp = null;
+  let heldHp = null; // Canonical seat order throughout the timeline.
   board.classList.add("battle-stage");
 
   function framesFor(species) {
@@ -132,146 +112,133 @@ export function createStage(board, token) {
     for (const timer of timers) clearTimeout(timer);
     timers = [];
     heldHp = null;
-    for (const { portrait } of fighters) {
-      delete portrait.dataset.move;
-      delete portrait.dataset.effect;
-      delete portrait.dataset.beat;
-      delete portrait.dataset.hit;
-      delete portrait.dataset.counter;
-      delete portrait.dataset.strike;
+    delete board.dataset.shake;
+    for (const { portrait, amount } of fighters) {
+      for (const key of ["move", "effect", "beat", "hit", "impact", "counter", "strike"]) delete portrait.dataset[key];
+      amount.textContent = "";
+      delete amount.dataset.kind;
     }
   }
 
-  function showOutcome() {
-    const room = current?.room;
-    fighters.forEach(({ portrait }, index) => {
-      delete portrait.dataset.outcome;
-      if (room?.phase !== "finished" || room.winner == null) return;
-      const canonicalIndex = index === 0 ? room.you : 1 - room.you;
-      portrait.dataset.outcome = room.winner === "draw" ? "draw" : room.winner === canonicalIndex ? "win" : "loss";
-    });
-  }
-
-  function showBadges(step) {
-    const { round, actions, rules } = current;
-    fighters.forEach(({ badge }, index) => {
-      const action = actions?.[index];
-      badge.hidden = !action;
-      if (!action) {
-        badge.textContent = "";
-        delete badge.dataset.move;
-        return;
-      }
-      const text = describe(round, action, actions[1 - index], rules, step);
-      if (badge.textContent !== text) badge.textContent = text;
-      badge.dataset.move = action.move || "timeout";
-    });
-  }
-
-  function showHealth(values) {
+  function showHealth(room, values) {
     heldHp = values;
-    fighters.forEach(({ health, healthLabel }, index) => {
-      const max = current.players[index]?.maxHp;
-      const hp = values[index];
-      if (!Number.isFinite(hp) || !Number.isFinite(max) || max <= 0) return;
-      health.max = max;
-      health.value = hp;
-      healthLabel.textContent = `生命 ${hp} / ${max}`;
+    fighters.forEach(({ portrait, health, healthLabel }, index) => {
+      const seat = index === 0 ? room.you : 1 - room.you;
+      portrait.toggleAttribute("data-down", values[seat] === 0);
+      health.max = room.players[seat].maxHp;
+      health.value = values[seat];
+      healthLabel.textContent = `生命 ${values[seat]} / ${health.max}`;
     });
   }
 
-  function playRound() {
-    const { actions } = current;
-    heldHp = actions.map((action) => action.hpBefore);
-    showBadges(0);
+  function showBadges(room, rules, resolved) {
+    const action = room?.lastAction;
+    fighters.forEach(({ badge }, index) => {
+      const seat = index === 0 ? room?.you : 1 - room?.you;
+      const parts = [];
+      if (action && seat === action.actor) {
+        const move = action.name || rules?.skills?.[action.move]?.name || ({ decline: "放弃复活", timeout: "超时" })[action.move] || "超时";
+        parts.push(`第 ${action.turn} 手`, move);
+        if (resolved && action.healing) parts.push(`恢复 ${action.healing}`);
+        if (resolved && action.penalty) parts.push(`超时扣血 ${action.penalty}`);
+        if (resolved && action.counter) parts.push(`受反击 ${action.counter}`);
+      } else if (action && resolved) {
+        if (action.damage) parts.push(`受伤 ${action.damage}`);
+        if (action.counter) parts.push(`反击 ${action.counter}`);
+      }
+      badge.hidden = !parts.length;
+      const text = parts.join(" · ");
+      if (text !== badge.textContent) badge.textContent = text;
+      badge.dataset.move = action?.move || "";
+    });
+  }
+
+  function play(room, rules) {
+    const action = room.lastAction;
+    const { actor, hpBefore, hpAfter, damage, counter, penalty, healing } = action;
+    const target = 1 - actor;
+    const source = fighters[actor === room.you ? 0 : 1];
+    const receiver = fighters[target === room.you ? 0 : 1];
     const [left, right] = fighters.map(({ portrait }) => portrait.getBoundingClientRect());
     const distance = Math.abs((right.left + right.width / 2) - (left.left + left.width / 2));
-    const simultaneous = actions.every(({ move }) => ATTACKS.has(move));
-    const travel = Math.max(24, distance - (left.width + right.width) * .29);
-    fighters.forEach(({ portrait }, index) => {
+    for (const { portrait } of fighters) {
       delete portrait.dataset.outcome;
-      portrait.dataset.move = actions[index].move || "timeout";
-      if (actions[index].effect) portrait.dataset.effect = actions[index].effect;
-      portrait.dataset.beat = "prep";
-      portrait.toggleAttribute("data-strike", ATTACKS.has(actions[index].move));
-      portrait.toggleAttribute("data-counter", actions[index].counter > 0);
       portrait.style.setProperty("--stage-range", `${distance}px`);
-      portrait.style.setProperty("--stage-lunge", `${simultaneous ? travel / 2 : travel}px`);
+      portrait.style.setProperty("--stage-lunge", `${Math.max(0, distance - (left.width + right.width) * .29)}px`);
+    }
+    source.portrait.dataset.move = action.move || "timeout";
+    source.portrait.dataset.beat = "prep";
+    if (action.effect) source.portrait.dataset.effect = action.effect;
+    source.portrait.toggleAttribute("data-strike", ATTACKS.has(action.move));
+    showHealth(room, [...hpBefore]);
+    showBadges(room, rules, false);
+    const at = (delay, callback) => timers.push(setTimeout(callback, delay));
+    const float = (fighter, value, kind) => {
+      fighter.amount.dataset.kind = kind;
+      fighter.amount.textContent = `${kind === "heal" ? "+" : "−"}${value}`;
+      if (kind === "heal") return;
+      fighter.portrait.dataset.hit = "";
+      fighter.portrait.dataset.impact = kind === "counter" ? "counter" : action.move;
+      board.dataset.shake = kind === "counter" ? "counter" : action.move === "heavy" ? "heavy" : "light";
+    };
+    const impact = action.move === "flare" ? 290 : 230;
+    at(impact, () => {
+      source.portrait.dataset.beat = "impact";
+      if (damage) float(receiver, damage, "hit");
+      if (penalty) float(source, penalty, "hit");
+      if (healing) float(source, healing, "heal");
+      const values = [...hpAfter];
+      if (counter) values[actor] = Math.min(room.players[actor].maxHp, hpBefore[actor] + healing);
+      showHealth(room, values);
     });
-
-    const at = (delay, step, callback) => timers.push(setTimeout(() => {
-      callback();
-      showBadges(step);
-    }, delay));
-    const mark = (beat, hit) => fighters.forEach(({ portrait }, index) => {
-      portrait.dataset.beat = beat;
-      portrait.toggleAttribute("data-hit", hit(index));
-    });
-    const settleHealth = () => showHealth(current.players.map((player) => player?.hp));
-
-    at(230, 1, () => {
-      mark("impact", (index) => directDamage(actions[index], actions[1 - index]) > 0);
-      showHealth(actions.map((action, index) => Math.max(0, action.hpBefore - directDamage(action, actions[1 - index]))));
-    });
-    if (actions.some(({ counter }) => counter > 0)) {
-      at(395, 1, () => mark("counter", () => false));
-      at(480, 2, () => {
-        mark("return", (index) => actions[1 - index].counter > 0);
-        showHealth(actions.map((action) => Math.max(0, action.hpBefore - action.damage)));
+    if (counter) {
+      at(impact + 150, () => {
+        delete receiver.portrait.dataset.hit;
+        delete board.dataset.shake;
+        receiver.portrait.dataset.counter = "";
+        receiver.portrait.dataset.beat = "counter";
+      });
+      at(impact + 240, () => {
+        source.portrait.dataset.beat = "return";
+        float(source, counter, "counter");
+        showHealth(room, hpAfter);
       });
     }
-    at(610, 3, () => {
-      mark("settle", (index) => actions[index].penalty > 0);
-      settleHealth();
-    });
-    at(920, 3, () => {
+    at(impact + (counter ? 555 : 305), () => {
       clearMotion();
-      showOutcome();
+      onComplete();
     });
   }
 
   function update(room, rules, online = true) {
-    if (!room || (room.you !== 0 && room.you !== 1)) {
-      clearMotion();
-      current = null;
-      previous = null;
-      showOutcome();
-      for (const fighter of fighters) {
-        showPet(fighter, null, framesFor);
-        fighter.badge.hidden = true;
-        fighter.badge.textContent = "";
-        delete fighter.badge.dataset.move;
-      }
-      return;
-    }
-
-    const last = room.lastRound;
-    const round = Number.isSafeInteger(last?.round) && last.actions?.length === 2 && last.actions.every(Boolean)
-      ? last.round : 0;
-    const order = [room.you, 1 - room.you];
-    current = { room, rules, round, players: order.map((index) => room.players[index]),
-      actions: round ? order.map((index) => last.actions[index]) : null };
-    fighters.forEach((fighter, index) => showPet(fighter, current.players[index]?.pet, framesFor));
-
-    const sameRoom = previous && previous.code === room.code && previous.you === room.you;
-    const keepPlaying = sameRoom && previous.round === round && online && previous.online && !reducedMotion.matches;
-    const consecutive = sameRoom && previous.online && online && previous.phase === "playing" &&
-      round === previous.round + 1 && round === previous.roomRound;
-    previous = { code: room.code, you: room.you, phase: room.phase, roomRound: room.round, round, online };
-    if (keepPlaying && heldHp) return;
-
+    const action = room?.lastAction;
+    const visible = online && !document.hidden && !reducedMotion.matches;
+    const sameRoom = !!room && previous?.code === room.code && previous?.you === room.you;
+    const sameAction = sameRoom && previous.actionTurn === action?.turn;
+    const consecutive = sameRoom && previous.visible && visible && previous.phase === "playing" &&
+      action?.turn === previous.turn && action.turn === (previous.actionTurn ?? 0) + 1;
+    const keepPlaying = sameAction && previous.phase === room?.phase && heldHp && visible;
+    previous = room ? { code: room.code, you: room.you, turn: room.turn, phase: room.phase, actionTurn: action?.turn, visible } : null;
+    if (keepPlaying) return;
     clearMotion();
-    if (consecutive && !reducedMotion.matches) {
-      playRound();
-    } else {
-      showBadges(3);
-      showOutcome();
-    }
+    fighters.forEach((fighter, index) => {
+      const seat = index === 0 ? room?.you : 1 - room?.you;
+      showPet(fighter, room?.players[seat]?.pet, framesFor);
+      fighter.portrait.toggleAttribute("data-down", room?.players[seat]?.hp === 0);
+      delete fighter.portrait.dataset.outcome;
+      if (room?.phase === "finished" && room.winner != null) {
+        fighter.portrait.dataset.outcome = room.winner === "draw" ? "draw" : room.winner === seat ? "win" : "loss";
+      }
+    });
+    if (consecutive && !sameAction && [0, 1].includes(action.actor) && action.hpBefore?.length === 2 && action.hpAfter?.length === 2) play(room, rules);
+    else showBadges(room, rules, true);
   }
 
-  function visualHp(side, hp) {
-    return heldHp?.[SIDES.indexOf(side)] ?? hp;
+  function invalidate() {
+    previous = null;
+    clearMotion();
+    onComplete();
   }
-
-  return { update, visualHp };
+  reducedMotion.addEventListener("change", invalidate);
+  return { update, invalidate, get busy() { return !!heldHp; }, visualHp: (seat, hp) => heldHp?.[seat] ?? hp };
 }

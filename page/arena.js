@@ -2,9 +2,9 @@ import { createStage } from "./stage.js";
 
 const byId = (id) => document.getElementById(id);
 const token = document.querySelector('meta[name="arena-token"]').content;
-const stage = createStage(document.querySelector(".board"), token);
-const ATTRIBUTES = { attack: "攻击", defense: "防御", vitality: "体力" };
-const SKILLS = ["attack", "break", "shield", "counter", "charge", "heavy", "heal"];
+const stage = createStage(document.querySelector(".board"), token, render);
+const ATTRIBUTES = { attack: "攻击", defense: "防御", vitality: "耐力" };
+const SKILLS = ["attack", "break", "shield", "counter", "charge", "heavy", "heal", "revive"];
 const EQUIPPED_COUNT = 2;
 const ATTRIBUTE_LABELS = { vaccine: "疫苗", virus: "病毒", data: "数据" };
 const IDLE_FRAMES = [0, 1];
@@ -23,6 +23,8 @@ let failedPolls = 0;
 let checkResult = null;
 let reloading = false;
 let selection = null;
+let thresholdPending = false;
+let resumeSnapshot = false;
 let savedLoadout = null;
 const spriteAnimations = new Map();
 const spriteFailures = new Set();
@@ -250,7 +252,7 @@ function supportsRules(rules) {
 }
 
 function skillDetails(skill) {
-  return `消耗 ${skill.cost} 能量 · 冷却 ${skill.cooldown} 回合`;
+  return `消耗 ${skill.cost} 体力 · 冷却 ${skill.cooldown} 手`;
 }
 
 function renderFighter(id, fighter, phase, rules) {
@@ -267,25 +269,32 @@ function renderFighter(id, fighter, phase, rules) {
   vitals.hidden = !fighter || !Number.isFinite(fighter.maxHp) || fighter.maxHp <= 0;
   if (!vitals.hidden) {
     const health = card.querySelector(".health");
-    const hp = stage.visualHp(id === "fighter-self" ? "self" : "opponent", fighter.hp);
+    const seat = id === "fighter-self" ? status.room.you : 1 - status.room.you;
+    const hp = stage.visualHp(seat, fighter.hp);
     health.max = fighter.maxHp;
     health.value = hp;
     setText(card.querySelector(".health-label"), `生命 ${hp} / ${fighter.maxHp}`);
     const energy = card.querySelector(".energy");
     energy.hidden = !rules;
-    if (rules) setText(energy, `能量 ${fighter.energy} / ${rules.maxEnergy}`);
+    if (rules) setText(energy, `体力 ${fighter.energy} / ${rules.maxEnergy}`);
   }
 
   let fighterState = "";
   if (fighter && phase === "waiting") fighterState = fighter.ready ? "已准备 · 配置锁定" : "未准备";
-  if (fighter && phase === "playing") fighterState = fighter.locked ? "已锁定招式" : "正在选择";
+  if (fighter && phase === "playing" && !stage.busy) {
+    const room = status.room;
+    const seat = id === "fighter-self" ? room.you : 1 - room.you;
+    fighterState = `${seat === room.firstSeat ? "先手" : "后手"} · ${seat === room.activeSeat ? "行动中" : "等待行动"}`;
+  }
   const state = card.querySelector(".fighter-state");
   setText(state, fighterState);
   state.hidden = !fighterState;
   const effects = card.querySelector(".fighter-effects");
-  const activeEffects = [fighter?.exposed ? "防御 −3" : "", fighter?.charged ? "攻击伤害 +3" : ""].filter(Boolean);
-  effects.hidden = phase !== "playing" || !activeEffects.length;
-  if (!effects.hidden) setText(effects, `本回合 ${activeEffects.join(" · ")}`);
+  const stance = fighter?.stance;
+  const activeEffects = [fighter?.exposed ? "破甲" : "", fighter?.charged ? "已蓄力" : "",
+    stance ? (rules?.skills[stance]?.name || fighter?.innateSkill?.name) : ""].filter(Boolean);
+  effects.hidden = stage.busy || phase !== "playing" || !activeEffects.length;
+  if (!effects.hidden) setText(effects, activeEffects.join(" · "));
 }
 
 function renderLoadout(id, fighter, rules, phase) {
@@ -312,11 +321,11 @@ function renderLoadout(id, fighter, rules, phase) {
   const skills = fighter?.skills.map((id) => {
     const name = rules.skills[id]?.name || id;
     const cooldown = fighter.cooldowns?.[id] ?? 0;
-    return phase === "playing" && cooldown ? `${name}（冷却 ${cooldown} 回合）` : name;
+    return phase === "playing" && cooldown ? `${name}（冷却 ${cooldown} 手）` : name;
   });
   const innate = fighter?.innateSkill;
   const innateCooldown = fighter?.cooldowns?.[innate?.id];
-  const innateText = innate ? ` · 固有技能 ${innate.name}${innateCooldown ? `（冷却 ${innateCooldown} 回合）` : ""}：${innate.description}（${skillDetails(innate)}）` : "";
+  const innateText = innate ? ` · 固有技能 ${innate.name}${innateCooldown ? `（冷却 ${innateCooldown} 手）` : ""}：${innate.description}（${skillDetails(innate)}）` : "";
   setText(card.querySelector(".loadout-skills"), skills ? `已装备 ${skills.join("、")}${innateText}` : "等待对手加入");
 }
 
@@ -385,13 +394,21 @@ function battleCopy(room, self, opponent) {
     if (self?.ready) return ["等待对手准备", "双方准备后，对战自动开始。"];
     return ["准备对战", "双方准备后，对战自动开始。"];
   }
+  if (stage.busy) {
+    const action = room.lastAction;
+    const who = action.actor === room.you ? "我方" : "对手";
+    return [`第 ${action.turn} 手`, `${who} · ${action.name || room.rules.skills[action.move]?.name || (action.move === "decline" ? "放弃复活" : "超时")}`];
+  }
   if (room.phase === "playing") {
-    if (self?.locked) return [`第 ${room.round} 回合`, "招式已锁定，等待回合结算。"];
-    return [`第 ${room.round} 回合`, "选定后将锁定招式。"];
+    const ours = room.activeSeat === room.you;
+    const detail = room.revivePending ? (ours ? "复活可恢复 30% 最大生命，放弃或超时将结束复活机会。" : "等待后手决定是否复活。") :
+      (ours ? "选择一项招式。" : "等待对手出招。");
+    return [`第 ${room.turn} 手 · ${ours ? "我方行动" : "对手行动"}`, selection ? "正在提交招式…" : detail];
   }
   const score = room.settlement?.[room.you];
   const signed = (value) => value > 0 ? `+${value}` : `${value}`;
-  const detail = score ? `本场战绩 ${signed(score.total)} 分（赛果 ${signed(score.resultPoints)}，超时 ${score.timeouts} 次，每次扣 1 分）。` : "本场对战结束。";
+  const detail = score ? `本场 ${signed(score.total)} Token（赛果 ${signed(score.resultPoints)}，超时 ${score.timeouts} 次）。` +
+    (Number.isFinite(score.applied) && Number.isFinite(score.balance) ? `实际变动 ${signed(score.applied)}，余额 ${score.balance} Token。` : "等待钱包结算。") : "本场对战结束。";
   if (score?.forfeited) return ["你已认负", detail];
   if (room.settlement?.[1 - room.you]?.forfeited) return ["对手已认负", detail];
   if (room.winner === "draw") return ["平局", detail];
@@ -402,7 +419,7 @@ function battleCopy(room, self, opponent) {
 
 function updateTimer() {
   const room = status?.room;
-  if (room?.phase !== "playing" || !Number.isFinite(room.deadline)) {
+  if (stage.busy || room?.phase !== "playing" || !Number.isFinite(room.deadline)) {
     message("timer", "");
     return;
   }
@@ -431,29 +448,47 @@ function renderRoundControls(room, self, rules) {
   controls.hidden = room.phase !== "playing" || !rules || !self;
   if (controls.hidden) return;
 
-  const moves = ["attack", ...self.skills, self.innateSkill?.id];
+  const ours = room.activeSeat === room.you;
+  const reviveChoice = room.revivePending && !stage.busy;
+  setText(byId("moves-title"), reviveChoice ? "复活选择" : "选择招式");
+  setText(byId("move-help"), `在招式区内可按数字键 ${reviveChoice ? "1–2" : "1–4"} 选择。`);
+  const moves = reviveChoice ? ["revive", "decline"] : ["attack", ...self.skills, self.innateSkill?.id];
   moveButtons.forEach((button, index) => {
     const id = moves[index];
     button.hidden = !id;
     if (!id) {
       delete button.dataset.move;
+      delete button.dataset.innate;
+      button.removeAttribute("data-powered");
+      button.removeAttribute("data-threshold");
       return;
     }
     const innate = id === self.innateSkill?.id;
-    const skill = innate ? self.innateSkill : rules.skills[id];
+    const skill = id === "decline" ? { name: "放弃复活", description: "放弃后结算胜负。", cost: 0, cooldown: 0 } :
+      innate ? self.innateSkill : rules.skills[id];
     const cooldown = self.cooldowns?.[id] ?? 0;
     const selected = selection?.move === id;
-    const needsEnergy = skill.cost > self.energy;
-    const selectedLabel = selected ? "已锁定此招式" : "招式已锁定";
-    const availability = [cooldown ? `剩余冷却 ${cooldown} 回合` : "", needsEnergy ? "能量不足" : ""]
-      .filter(Boolean).join(" · ");
+    let restriction = "";
+    if (id === "revive" && !reviveChoice) {
+      restriction = self.reviveUsed ? "本场已使用" : room.you === room.firstSeat ? "仅开局后手可用" : "倒地时可用";
+    }
+    const availability = [restriction, cooldown ? `冷却 ${cooldown} 手` : "", skill.cost > self.energy ? "体力不足" : ""].filter(Boolean);
     button.dataset.move = id;
+    if (innate) button.dataset.innate = skill.effect || id;
+    else delete button.dataset.innate;
+    button.toggleAttribute("data-powered", innate && self.energy >= skill.cost);
+    button.setAttribute("aria-keyshortcuts", String(index + 1));
     button.toggleAttribute("data-selected", selected);
-    setText(button.children[0], innate ? `固有 · ${skill.name}` : skill.name);
+    setText(button.children[0], `${index + 1} · ${innate ? "固有 · " : ""}${skill.name}`);
     setText(button.children[1], skill.description);
-    setText(button.children[2], skillDetails(skill));
-    setText(button.children[3], self.locked ? selectedLabel : availability || "可用");
-    disableAction(button, pending || self.locked || !!availability);
+    setText(button.children[2], id === "decline" ? "" : skillDetails(skill));
+    const state = stage.busy ? "结算中" : resumeSnapshot ? "正在同步" : selected ? "正在提交…" : ours ? "" : "对手行动";
+    setText(button.children[3], [state, availability.join(" · ") || (innate ? "已就绪" : "可用")].filter(Boolean).join(" · "));
+    if (innate && thresholdPending && !stage.busy) {
+      thresholdPending = false;
+      button.setAttribute("data-threshold", "");
+    }
+    disableAction(button, pending || stage.busy || resumeSnapshot || !ours || !!availability.length);
   });
 }
 
@@ -464,10 +499,10 @@ function renderArena() {
   setText(byId("room-mode"), { online: "在线对战", code: "对战码房间" }[mode] || "对战房间");
   byId("room-code").hidden = mode !== "code" || room.phase !== "waiting" || !room.code;
   setText(byId("room-code-text"), room.code || "");
-  setText(byId("leave"), room.phase === "playing" ? (room.settlement === null ? "认负结算（−3 分）" : "退出对战") : "返回大厅");
+  setText(byId("leave"), room.phase === "playing" ? "认负（−3 Token）" : "返回大厅");
   disableAction(byId("leave"), pending);
   const rules = supportsRules(room.rules) ? room.rules : null;
-  stage.update(room, rules, connection === "online");
+  stage.update(room, rules, connection === "online" && !status.error && !resumeSnapshot);
   message("rules-notice", rules ? "" : "此房间的对战规则与当前版本不兼容。请退出房间，确认双方和中继的版本后重试。");
   renderFighter("fighter-self", self, room.phase, rules);
   renderFighter("fighter-opponent", opponent, room.phase, rules);
@@ -508,7 +543,19 @@ function applyStatus(next) {
   const previous = status;
   const roomChanged = previous?.room?.code !== next.room?.code || !!previous?.room !== !!next.room;
   const inviteCount = next.lobby.invites.length;
-  if (roomChanged || next.room?.phase !== "playing" || previous?.room?.round !== next.room?.round) selection = null;
+  const room = next.room;
+  if (roomChanged || room?.phase !== "playing" || previous?.room?.turn !== room?.turn) selection = null;
+  const fighter = room?.players[room.you];
+  const innate = fighter?.innateSkill;
+  const continuous = !roomChanged && !resumeSnapshot && !document.hidden && !next.error && !previous?.error &&
+    previous?.room?.phase === "playing" && room?.phase === "playing" && previous.room.turn === room.turn - 1;
+  if (continuous && innate && previous.room.players[room.you].energy < innate.cost && fighter.energy >= innate.cost) {
+    thresholdPending = true;
+  }
+  if (roomChanged || room?.phase !== "playing" || !innate || fighter.energy < innate.cost || resumeSnapshot || document.hidden) {
+    thresholdPending = false;
+    for (const button of moveButtons) button.removeAttribute("data-threshold");
+  }
   if (roomChanged) savedLoadout = null;
   const active = document.activeElement;
   status = next;
@@ -560,6 +607,10 @@ function receiveStatus(next) {
   pollError = "";
   setConnection("online");
   applyStatus(next);
+  if (!document.hidden && !next.error && resumeSnapshot) {
+    resumeSnapshot = false;
+    render();
+  }
   if (checkResult) {
     const confirmed = checkResult.action === "discover" && next.lobby.discoverable === checkResult.enabled;
     checkResult = null;
@@ -577,10 +628,11 @@ async function poll() {
   } catch (error) {
     if (requestVersion !== version || reloading || ++failedPolls < 2) return;
     pollError = error instanceof ArenaRequestError ? error.message : "";
+    resumeSnapshot = true;
     setConnection("offline");
     render();
   } finally {
-    setTimeout(poll, POLL_INTERVAL);
+    setTimeout(poll, status?.room?.phase === "playing" && !document.hidden ? 300 : POLL_INTERVAL);
   }
 }
 
@@ -604,11 +656,11 @@ async function runAction(action, fields) {
   pending = true;
   version += 1;
   actionError = "";
+  selection = action === "move" ? { move: fields.move } : null;
   announce("");
   render();
   try {
     const next = await requestAction({ action, ...fields });
-    if (action === "move") selection = { move: fields.move };
     receiveStatus(next);
     if (action === "join") byId("join-code").value = "";
     if (action === "resume" && !next.room && !next.error) announce("没有可恢复的对战。");
@@ -618,9 +670,11 @@ async function runAction(action, fields) {
       if (!reloading) actionError = error.message;
     } else {
       checkResult = { action, ...fields };
+      resumeSnapshot = true;
       setConnection("offline");
     }
   } finally {
+    selection = null;
     pending = false;
     render();
   }
@@ -667,12 +721,30 @@ byId("join-code").addEventListener("keydown", (event) => {
 });
 byId("join-code").addEventListener("input", (event) => event.target.setCustomValidity(""));
 
+function submitMove(button) {
+  const room = status?.room;
+  if (!room || room.phase !== "playing" || room.activeSeat !== room.you || stage.busy || pending || document.hidden ||
+      byId("round-controls").hidden || button.hidden || button.getAttribute("aria-disabled") === "true") return;
+  runAction("move", { move: button.dataset.move, turn: room.turn });
+}
+
 for (const button of moveButtons) {
-  button.addEventListener("click", () => {
-    if (status?.room?.phase !== "playing" || button.getAttribute("aria-disabled") === "true") return;
-    runAction("move", { move: button.dataset.move, round: status.room.round });
+  button.addEventListener("click", () => submitMove(button));
+  button.addEventListener("animationend", (event) => {
+    if (event.animationName === "innate-threshold") button.removeAttribute("data-threshold");
   });
 }
+byId("round-controls").addEventListener("keydown", (event) => {
+  if (!/^[1-4]$/.test(event.key) || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+  event.preventDefault();
+  submitMove(moveButtons[Number(event.key) - 1]);
+});
+document.addEventListener("visibilitychange", () => {
+  resumeSnapshot = true;
+  thresholdPending = false;
+  for (const button of moveButtons) button.removeAttribute("data-threshold");
+  stage.invalidate();
+});
 
 byId("copy-code").addEventListener("click", async () => {
   const code = status?.room?.code;

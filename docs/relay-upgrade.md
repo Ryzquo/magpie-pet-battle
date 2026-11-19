@@ -1,57 +1,33 @@
-# 升级宠物对战中继
+# 升级宠物对战中继至协议 v3
 
-本次更新需要升级中继，双方玩家也需更新侧栏插件才能选择固有技能、播放对应特效并查看单场战绩。
+交替行动、后手复活和 Token 结算要求两端插件与中继同时更新。请安排在当前对局结束后切换，重启会结束内存中的房间。
 
-## 这次改了什么
+## 中继与数据库
 
-中继负责配装锁定、回合结算和终局记分。新版按物种下发固有技能，并在终局返回双方的赛果分、超时次数与单场总分。中继也根据玩家出战形态的图鉴力量和闪避分配基础属性。
-
-旧版中继会忽略客户端上报的 `combatStats` 字段，继续按物种分配基础属性。**不升级也能正常对战**，只是双方看不到彼此的图鉴数值，属性仍按旧规则计算。
-
-## 需要的文件
-
-从仓库取新版本后，中继只依赖以下文件：
-
-- `server.mjs`
-- `lib/http.mjs`、`lib/hub.mjs`、`lib/rooms.mjs`、`lib/combat.mjs`
-
-`Dockerfile` 已包含这些文件，直接重建镜像即可。
-
-## 升级步骤
-
-用 Docker 部署时，在仓库目录重新构建并重启容器，保留原有环境变量和端口映射：
+Docker 镜像包含全部中继文件。运行单实例，保留原有 HTTPS 入口与端口，给容器的 `/data` 挂载同一个持久卷。首次部署示例：
 
 ```bash
-git pull
 docker build -t magpie-pet-battle .
-docker rm -f magpie-pet-battle
 docker run -d --name magpie-pet-battle -p 3574:3574 \
-  -e ARENA_HOST=0.0.0.0 -e ARENA_PORT=3574 magpie-pet-battle
+  -v petbattle-wallet:/data magpie-pet-battle
 ```
 
-用 Node 直接运行时，覆盖上述文件后重启进程即可，`ARENA_HOST`、`ARENA_PORT` 的用法不变。
-
-## 验证
-
-健康检查的 `features` 应同时列出图鉴属性、固有技能和单场战绩。
+已有容器请在部署工具中更新镜像并配置上述卷。容器默认把余额和流水写入 `/data/wallet.sqlite`。直接运行时推荐 Node.js 24 LTS，更新 `server.mjs` 以及 `lib/` 下的 `http.mjs`、`hub.mjs`、`rooms.mjs`、`combat.mjs`、`wallet.mjs`。例如：
 
 ```bash
-curl -sS https://<你的域名>/health
-# {"ok":true,"protocol":2,"features":["combat-stats","innate-skills","match-score"]}
+ARENA_WALLET_DB=/var/lib/pet-battle/wallet.sqlite node server.mjs
 ```
 
-再确认房间确实接收了图鉴数值。把下面命令返回的 `players[0]` 与旧行为对比，`pet.combatStats` 应保留，`base` 应与力量、闪避对应：
+`ARENA_WALLET_DB` 是中继进程可写的数据库路径。直接运行时默认位于 `XDG_DATA_HOME`（缺省为 `~/.local/share`）下的 `magpie-pet-battle/wallet.sqlite`。停服备份时保留整个数据目录。旧镜像回滚期间须保留该目录，旧版对局不会产生 Token 流水。
+
+## 客户端与路由
+
+反向代理应将 `/health` 和 `/arena/v3/*` 转发到此中继。若原代理按版本过滤路径，也应将旧版路径转发给新版中继，以便显示升级提示。公网入口使用 HTTPS。本机插件为每个中继在用户数据目录的 `magpie-pet-battle/wallets/` 下分别生成凭据。迁移玩家身份时需私下备份该目录并保留文件权限。
+
+## 验收
 
 ```bash
-curl -sS -X POST https://<你的域名>/arena/v2/room \
-  -H 'content-type: application/json' \
-  -d '{"action":"create","pet":{"name":"probe","species":"probe","speciesId":"1-001","stage":1,"combatStats":{"strength":90,"evasion":10}}}'
+curl -fsS https://<你的域名>/health
 ```
 
-预期 `base` 为 `{"attack":6,"defense":2,"vitality":4}`，`profile` 为「强攻型」。若 `combatStats` 消失或 `base` 仍是 `{"attack":3,"defense":3,"vitality":6}`，说明仍在运行旧版。
-
-## 影响与回滚
-
-- 房间保存在进程内存中，重启会结束当时正在进行的对局，其余数据不受影响，无需迁移。
-- 旧版客户端连新版中继、新版客户端连旧版中继都能正常打完，缺少图鉴数值时回落到按物种分配。
-- 需要回滚时换回原镜像即可，中继不写入任何持久化状态。
+预期 `protocol` 为 `3`，功能列表含 `alternating-turns`、`revival` 和 `token-wallet`。用两份独立的本机身份建房并加入。双方准备后仅先手能行动，出招后两端应显示相同的伤害和新行动席位。双方有效出招后认负，检查各自结算的应计变动、实计变动和余额。重启中继再打第二场，确认余额接续。

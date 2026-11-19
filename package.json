@@ -17,6 +17,6 @@
       "file": "page/index.html",
       "service": { "port": 3572 }
     },
-    "options": { "relayUrl": "", "petDbPath": "" }
+    "options": { "relayUrl": "https://lindum.top/petbattle", "petDbPath": "" }
   }
 }

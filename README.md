@@ -23,10 +23,10 @@ magpie plugin add "$PWD"
 
 配置 `relayUrl` 后，大厅的「开启发现」会切换为「开启在线发现」：插件每隔几秒把在线状态上报到房间服务，并从同一个服务读取在线玩家和收到的挑战。双方不必处于同一局域网，挑战、建房和对局都经该服务转发，插件端不需要公网 IP 或端口映射。
 
-两端配置同一个房间服务地址即可（`localhost` 之外的 HTTP 只接受 IP 地址，公网部署建议使用 HTTPS）：
+插件默认使用 `https://lindum.top/petbattle`，安装后无需配置即可在线对战。要部署自己的房间服务时再覆盖该地址（`localhost` 之外的 HTTP 只接受 IP 地址，公网部署建议使用 HTTPS）：
 
 ```bash
-magpie plugin options magpie-pet-battle '{"relayUrl":"https://battle.example.com"}'
+magpie plugin options magpie-pet-battle '{"relayUrl":"https://your-relay.example.com"}'
 ```
 
 双方进入大厅并开启「在线发现」，在在线玩家列表点击「挑战」，好友在接受后进入同一房间。房间保存在服务端内存中，服务重启会结束当前对局。未配置 `relayUrl` 时，「开启发现」仍使用局域网组播。

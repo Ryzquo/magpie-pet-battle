@@ -82,9 +82,9 @@
         <button id="resume" type="button" class="button secondary resume">恢复上次对战</button>
         <details class="rules" id="rules">
           <summary>对战规则</summary>
-          <p>双方各有 3 点生命，每回合同时出招。出招克制对方，或仅对方超时，对方失去 1 点生命。双方出招相同，或同时超时，本回合平手。</p>
-          <ul><li>猛攻克制聚力</li><li>聚力克制防守</li><li>防守克制猛攻</li></ul>
-          <p>一方生命耗尽时，对方获胜。打满 9 回合后，生命较多的一方获胜，生命相同则平局。</p>
+          <p>宠物图鉴中的物种对应强攻型、坚守型或耐力型，三种配置的基础属性总点数相同。准备前需给攻击、防御和体力分完 6 点，并选两项技能。双方都能看到已保存的配置，准备后配置锁定。</p>
+          <p>每回合限时 45 秒。双方各选一次普攻或已装备的技能，招式锁定后同时结算。使用技能前请查看能量和冷却。只有一方超时时，该方额外损失 5 点生命；双方都超时则无额外扣血。</p>
+          <p>任一方生命耗尽，或打满 12 回合时，对战结束。剩余生命百分比较高的一方获胜，百分比相同则平局。</p>
         </details>
       </section>
 
@@ -106,8 +106,13 @@
             <p class="fighter-label">我方</p>
             <p class="fighter-name"></p>
             <p class="fighter-meta"></p>
-            <div class="health" role="img"><i></i><i></i><i></i></div>
+            <div class="fighter-vitals" hidden>
+              <p class="health-label"></p>
+              <meter class="health" aria-label="生命值" min="0" max="1" value="0"></meter>
+              <p class="energy"></p>
+            </div>
             <p class="fighter-state"></p>
+            <p class="fighter-effects" hidden></p>
           </div>
           <div class="board-center" role="status">
             <h2 id="battle-status"></h2>
@@ -119,20 +124,54 @@
             <p class="fighter-label">对手</p>
             <p class="fighter-name"></p>
             <p class="fighter-meta"></p>
-            <div class="health" role="img"><i></i><i></i><i></i></div>
+            <div class="fighter-vitals" hidden>
+              <p class="health-label"></p>
+              <meter class="health" aria-label="生命值" min="0" max="1" value="0"></meter>
+              <p class="energy"></p>
+            </div>
             <p class="fighter-state"></p>
+            <p class="fighter-effects" hidden></p>
           </div>
         </div>
-        <div id="ready-controls" class="ready-controls" hidden>
-          <button class="button primary" type="button" id="ready">准备</button>
-        </div>
+        <p id="rules-notice" class="notice error" role="status" hidden></p>
+        <section id="room-loadouts" class="room-loadouts" aria-label="双方已保存配置" hidden>
+          <article class="panel loadout-summary" id="loadout-self">
+            <h2>我方配置</h2>
+            <p class="loadout-profile" hidden></p>
+            <dl class="loadout-stats"></dl>
+            <p class="loadout-skills"></p>
+          </article>
+          <article class="panel loadout-summary" id="loadout-opponent">
+            <h2>对手配置</h2>
+            <p class="loadout-profile" hidden></p>
+            <dl class="loadout-stats"></dl>
+            <p class="loadout-skills"></p>
+          </article>
+        </section>
+        <form id="loadout-form" class="panel loadout-form" aria-labelledby="loadout-title" hidden>
+          <h2 id="loadout-title">调整我方配置</h2>
+          <fieldset id="point-fields" aria-describedby="point-summary">
+            <legend>分配属性点</legend>
+            <div class="point-fields">
+              <label>攻击<input type="number" name="attack" min="0" step="1" required></label>
+              <label>防御<input type="number" name="defense" min="0" step="1" required></label>
+              <label>体力<input type="number" name="vitality" min="0" step="1" required></label>
+            </div>
+            <p id="point-summary" class="form-summary" role="status"></p>
+          </fieldset>
+          <fieldset id="skill-fieldset" aria-describedby="skill-summary">
+            <legend>装备技能</legend>
+            <div id="skill-fields" class="skill-fields"></div>
+            <p id="skill-summary" class="form-summary" role="status"></p>
+          </fieldset>
+          <div class="loadout-actions">
+            <button class="button secondary" type="button" id="save-loadout">保存配置</button>
+            <button class="button primary" type="button" id="ready">锁定并准备</button>
+          </div>
+        </form>
         <section id="round-controls" class="panel round-controls" hidden aria-labelledby="moves-title">
           <h2 id="moves-title">选择招式</h2>
-          <div class="moves">
-            <button type="button" class="move" data-move="strike"><span class="move-icon" aria-hidden="true">↗</span><span><strong>猛攻</strong><small>克制聚力</small></span></button>
-            <button type="button" class="move" data-move="guard"><span class="move-icon" aria-hidden="true">◇</span><span><strong>防守</strong><small>克制猛攻</small></span></button>
-            <button type="button" class="move" data-move="focus"><span class="move-icon" aria-hidden="true">◎</span><span><strong>聚力</strong><small>克制防守</small></span></button>
-          </div>
+          <div class="moves" id="move-buttons"></div>
         </section>
         <section class="panel history" id="history" aria-labelledby="history-title" hidden>
           <h2 id="history-title">对战记录</h2>

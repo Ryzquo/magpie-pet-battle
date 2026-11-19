@@ -2,8 +2,10 @@
 
 const byId = (id) => document.getElementById(id);
 const token = document.querySelector('meta[name="arena-token"]').content;
-const moveButtons = [...document.querySelectorAll("[data-move]")];
-const MAX_HP = 3;
+const ATTRIBUTES = { attack: "攻击", defense: "防御", vitality: "体力" };
+const SKILLS = ["attack", "break", "shield", "counter", "charge", "heavy", "heal"];
+const EQUIPPED_COUNT = 2;
+const pointInputs = [...byId("point-fields").querySelectorAll("input")];
 const POLL_INTERVAL = 1000;
 const REQUEST_TIMEOUT = 8000;
 
@@ -14,6 +16,7 @@ let actionError = "";
 let pollError = "";
 let connection = "connecting";
 let selection = null;
+let savedLoadout = null;
 
 function setText(element, text) {
   if (element.textContent !== text) element.textContent = text;
@@ -127,7 +130,20 @@ function renderLobby() {
   disableAction(byId("resume"), pending);
 }
 
-function renderFighter(id, fighter, phase) {
+function supportsRules(rules) {
+  const count = (value) => Number.isSafeInteger(value) && value >= 0;
+  return count(rules?.pointBudget) && count(rules.maxEnergy) && SKILLS.every((id) => {
+    const skill = rules.skills?.[id];
+    return typeof skill?.name === "string" && typeof skill.description === "string"
+      && count(skill.cost) && count(skill.cooldown);
+  });
+}
+
+function skillDetails(skill) {
+  return `消耗 ${skill.cost} 能量 · 冷却 ${skill.cooldown} 回合`;
+}
+
+function renderFighter(id, fighter, phase, rules) {
   const card = byId(id);
   card.dataset.empty = String(!fighter);
   setText(card.querySelector(".fighter-name"), fighter?.pet?.name || "等待加入");
@@ -136,18 +152,116 @@ function renderFighter(id, fighter, phase) {
   setText(meta, details);
   meta.hidden = !details;
 
-  const health = card.querySelector(".health");
-  health.hidden = !fighter;
-  const hp = fighter?.hp ?? 0;
-  health.setAttribute("aria-label", `生命值 ${hp} / ${MAX_HP}`);
-  [...health.children].forEach((segment, index) => segment.toggleAttribute("data-full", index < hp));
+  const vitals = card.querySelector(".fighter-vitals");
+  vitals.hidden = !fighter || !Number.isFinite(fighter.maxHp) || fighter.maxHp <= 0;
+  if (!vitals.hidden) {
+    const health = card.querySelector(".health");
+    health.max = fighter.maxHp;
+    health.value = fighter.hp;
+    setText(card.querySelector(".health-label"), `生命 ${fighter.hp} / ${fighter.maxHp}`);
+    const energy = card.querySelector(".energy");
+    energy.hidden = !rules;
+    if (rules) setText(energy, `能量 ${fighter.energy} / ${rules.maxEnergy}`);
+  }
 
   let fighterState = "";
-  if (fighter && phase === "waiting") fighterState = fighter.ready ? "已准备" : "未准备";
+  if (fighter && phase === "waiting") fighterState = fighter.ready ? "已准备 · 配置锁定" : "未准备";
   if (fighter && phase === "playing") fighterState = fighter.locked ? "已锁定招式" : "正在选择";
   const state = card.querySelector(".fighter-state");
   setText(state, fighterState);
   state.hidden = !fighterState;
+  const effects = card.querySelector(".fighter-effects");
+  const activeEffects = [fighter?.exposed ? "防御 −3" : "", fighter?.charged ? "攻击伤害 +3" : ""].filter(Boolean);
+  effects.hidden = phase !== "playing" || !activeEffects.length;
+  if (!effects.hidden) setText(effects, `本回合 ${activeEffects.join(" · ")}`);
+}
+
+function renderLoadout(id, fighter, rules, phase) {
+  const card = byId(id);
+  const profile = card.querySelector(".loadout-profile");
+  profile.hidden = !fighter?.profile;
+  setText(profile, fighter?.profile || "");
+  const stats = card.querySelector(".loadout-stats");
+  stats.hidden = !fighter;
+  if (fighter) {
+    if (!stats.children.length) {
+      for (const label of Object.values(ATTRIBUTES)) {
+        const group = element("div");
+        group.append(element("dt", "", label), element("dd"));
+        stats.append(group);
+      }
+    }
+    Object.keys(ATTRIBUTES).forEach((attribute, index) => {
+      const base = fighter.base[attribute];
+      const added = fighter.points[attribute];
+      setText(stats.children[index].lastElementChild, `${base} + ${added} = ${base + added}`);
+    });
+  }
+  const skills = fighter?.skills.map((id) => {
+    const name = rules.skills[id]?.name || id;
+    const cooldown = fighter.cooldowns?.[id] ?? 0;
+    return phase === "playing" && cooldown ? `${name}（冷却 ${cooldown} 回合）` : name;
+  });
+  setText(card.querySelector(".loadout-skills"), skills ? `已装备 ${skills.join("、")}` : "等待对手加入");
+}
+
+const skillInputs = SKILLS.slice(1).map((id) => {
+  const label = element("label", "skill-option");
+  const input = element("input");
+  input.type = "checkbox";
+  input.value = id;
+  const copy = element("span");
+  copy.append(element("strong"), element("span", "skill-description"), element("small"));
+  label.append(input, copy);
+  byId("skill-fields").append(label);
+  return { input, copy };
+});
+
+function readLoadout() {
+  return {
+    points: Object.fromEntries(pointInputs.map((input) => [input.name, input.valueAsNumber])),
+    skills: skillInputs.filter(({ input }) => input.checked).map(({ input }) => input.value),
+  };
+}
+
+function loadoutKey({ points, skills }) {
+  return JSON.stringify([Object.keys(ATTRIBUTES).map((id) => points[id]), SKILLS.filter((id) => skills.includes(id))]);
+}
+
+function updateLoadoutControls(rules) {
+  const draft = readLoadout();
+  const validPoints = pointInputs.every((input) => input.validity.valid);
+  const remaining = rules.pointBudget - Object.values(draft.points).reduce((sum, value) => sum + value, 0);
+  const pointText = remaining < 0 ? `超出 ${-remaining} 点` : `剩余 ${remaining} / ${rules.pointBudget} 点`;
+  setText(byId("point-summary"), validPoints ? pointText : `每项请输入 0–${rules.pointBudget} 的整数。`);
+  const selected = draft.skills.length;
+  setText(byId("skill-summary"), `已选 ${selected} / ${EQUIPPED_COUNT} 项${selected > EQUIPPED_COUNT ? "，请取消多选的技能" : ""}`);
+  const valid = validPoints && remaining === 0 && selected === EQUIPPED_COUNT;
+  disableAction(byId("save-loadout"), pending || !valid || loadoutKey(draft) === savedLoadout);
+  disableAction(byId("ready"), pending || !valid);
+}
+
+function renderLoadoutForm(self, rules, phase) {
+  const form = byId("loadout-form");
+  form.hidden = !rules || !self || self.ready || phase !== "waiting";
+  if (form.hidden) return;
+
+  const key = loadoutKey(self);
+  if (savedLoadout === null || (savedLoadout !== key && loadoutKey(readLoadout()) === savedLoadout)) {
+    for (const input of pointInputs) input.value = self.points[input.name];
+    for (const { input } of skillInputs) input.checked = self.skills.includes(input.value);
+  }
+  savedLoadout = key;
+  byId("point-fields").disabled = pending;
+  byId("skill-fieldset").disabled = pending;
+  for (const input of pointInputs) input.max = rules.pointBudget;
+  for (const { input, copy } of skillInputs) {
+    const skill = rules.skills[input.value];
+    setText(copy.children[0], skill.name);
+    setText(copy.children[1], skill.description);
+    setText(copy.children[2], skillDetails(skill));
+  }
+  updateLoadoutControls(rules);
 }
 
 function battleCopy(room, self, opponent) {
@@ -184,6 +298,39 @@ function renderLog(log) {
   list.replaceChildren(...log.map((line) => element("li", "", line)));
 }
 
+const moveButtons = Array.from({ length: EQUIPPED_COUNT + 1 }, () => {
+  const button = element("button", "move");
+  button.type = "button";
+  button.append(element("strong"), element("span", "skill-description"), element("small"), element("small", "move-state"));
+  byId("move-buttons").append(button);
+  return button;
+});
+
+function renderRoundControls(room, self, rules) {
+  const controls = byId("round-controls");
+  controls.hidden = room.phase !== "playing" || !rules || !self;
+  if (controls.hidden) return;
+
+  const moves = ["attack", ...self.skills];
+  moveButtons.forEach((button, index) => {
+    const id = moves[index];
+    const skill = rules.skills[id];
+    const cooldown = self.cooldowns?.[id] ?? 0;
+    const selected = selection?.move === id;
+    const needsEnergy = skill.cost > self.energy;
+    const selectedLabel = selected ? "已锁定此招式" : "招式已锁定";
+    const availability = [cooldown ? `剩余冷却 ${cooldown} 回合` : "", needsEnergy ? "能量不足" : ""]
+      .filter(Boolean).join(" · ");
+    button.dataset.move = id;
+    button.toggleAttribute("data-selected", selected);
+    setText(button.children[0], skill.name);
+    setText(button.children[1], skill.description);
+    setText(button.children[2], skillDetails(skill));
+    setText(button.children[3], self.locked ? selectedLabel : availability || "可用");
+    disableAction(button, pending || self.locked || !!availability);
+  });
+}
+
 function renderArena() {
   const { room, mode } = status;
   const self = room.players[room.you];
@@ -193,22 +340,22 @@ function renderArena() {
   setText(byId("room-code-text"), room.code || "");
   setText(byId("leave"), room.phase === "playing" ? "退出对战" : "返回大厅");
   disableAction(byId("leave"), pending);
-  renderFighter("fighter-self", self, room.phase);
-  renderFighter("fighter-opponent", opponent, room.phase);
+  const rules = supportsRules(room.rules) ? room.rules : null;
+  message("rules-notice", rules ? "" : "此房间的对战规则与当前版本不兼容。请退出房间，确认双方和中继的版本后重试。");
+  renderFighter("fighter-self", self, room.phase, rules);
+  renderFighter("fighter-opponent", opponent, room.phase, rules);
+  byId("room-loadouts").hidden = !rules;
+  if (rules) {
+    renderLoadout("loadout-self", self, rules, room.phase);
+    renderLoadout("loadout-opponent", opponent, rules, room.phase);
+  }
   const [title, detail] = battleCopy(room, self, opponent);
   setText(byId("battle-status"), title);
   message("battle-detail", detail);
   updateTimer();
 
-  byId("ready-controls").hidden = room.phase !== "waiting";
-  setText(byId("ready"), self?.ready ? "已准备" : "准备");
-  disableAction(byId("ready"), pending || !self || self.ready);
-  byId("round-controls").hidden = room.phase !== "playing";
-  for (const button of moveButtons) {
-    const selected = selection?.move === button.dataset.move;
-    button.toggleAttribute("data-selected", selected);
-    disableAction(button, pending || !self || self.locked);
-  }
+  renderLoadoutForm(self, rules, room.phase);
+  renderRoundControls(room, self, rules);
   renderLog(room.log);
 }
 
@@ -234,13 +381,15 @@ function applyStatus(next) {
   const roomChanged = previous?.room?.code !== next.room?.code || !!previous?.room !== !!next.room;
   const inviteCount = next.lan.invites.length;
   if (roomChanged || next.room?.phase !== "playing" || previous?.room?.round !== next.room?.round) selection = null;
+  if (roomChanged) savedLoadout = null;
+  const active = document.activeElement;
   status = next;
   render();
   if (roomChanged) announce("");
-  if (roomChanged || (previous && previous.room?.phase !== next.room?.phase)) {
+  const phaseChanged = previous?.room?.phase !== next.room?.phase;
+  if (roomChanged || active?.closest("[hidden]") || (phaseChanged && document.activeElement === document.body)) {
     const target = next.room ? byId("arena-title") : byId("lobby-title");
-    const active = document.activeElement;
-    if (active === document.body || active.closest("[hidden]") || roomChanged) target.focus();
+    target.focus();
   }
   if (!next.room && inviteCount > (previous?.lan.invites.length || 0)) announce(`收到 ${inviteCount} 个挑战邀请。`);
 }
@@ -309,8 +458,9 @@ async function runAction(action, fields) {
     if (action === "move") selection = { move: fields.move };
     applyStatus(next);
     if (action === "join") byId("join-code").value = "";
-    if (action === "challenge" && !next.room && !next.error) announce("已发送挑战，等待好友接受。");
     if (action === "resume" && !next.room && !next.error) announce("没有可恢复的对战。");
+    if (action === "challenge" && !next.room && !next.error) announce("已发送挑战，等待好友接受。");
+    if (action === "loadout" && !next.error) announce("已保存配置。");
   } catch (error) {
     actionError = error instanceof ArenaRequestError ? error.message : "未收到操作结果。请查看当前状态后再试。";
     if (!(error instanceof ArenaRequestError)) setConnection("offline");
@@ -330,8 +480,13 @@ function onAction(id, action, fields = () => undefined) {
 onAction("discover", "discover", () => ({ enabled: !status.lan.discoverable }));
 onAction("create", "create");
 onAction("resume", "resume");
-onAction("ready", "ready");
 onAction("leave", "leave");
+
+const loadoutForm = byId("loadout-form");
+loadoutForm.addEventListener("input", () => updateLoadoutControls(status.room.rules));
+loadoutForm.addEventListener("submit", (event) => event.preventDefault());
+onAction("save-loadout", "loadout", readLoadout);
+onAction("ready", "ready", readLoadout);
 
 function joinRoom() {
   if (byId("join").getAttribute("aria-disabled") === "true") return;

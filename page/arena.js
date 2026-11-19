@@ -88,24 +88,24 @@ function renderPlayers(id, players, actions, petAvailable) {
     previous.delete(key);
     if (row !== position) list.insertBefore(row, position);
     position = row.nextElementSibling;
-    const name = player.name || "附近玩家";
+    const name = player.name || "在线玩家";
     const petName = typeof player.pet === "string" ? player.pet : player.pet?.name;
-    const detail = petName && petName !== name ? petName : petDetails(player.pet);
+    const detail = player.pet ? [petName !== name ? petName : "", petDetails(player.pet)].filter(Boolean).join(" · ") : "未选择出战宠物";
     setText(row.querySelector("strong"), name);
     const description = row.querySelector(".player-info p");
     setText(description, detail);
     description.hidden = !detail;
     for (const button of row.querySelectorAll("button")) {
       button.setAttribute("aria-label", `${button.textContent}（${name}）`);
-      disableAction(button, pending || (button.hasAttribute("data-pet-required") && !petAvailable));
+      disableAction(button, pending || (button.hasAttribute("data-pet-required") && !petAvailable) ||
+        (button.dataset.action === "challenge" && !player.pet));
     }
   }
   for (const row of previous.values()) row.remove();
 }
 
 function renderLobby() {
-  const { pet, petError, lan, relayConfigured } = status;
-  const online = relayConfigured;
+  const { pet, petError, lobby, relayConfigured } = status;
   byId("pet-card").dataset.empty = String(!pet);
   setText(byId("pet-name"), pet?.name || "暂无宠物");
   message("pet-meta", petDetails(pet));
@@ -113,31 +113,26 @@ function renderLobby() {
     ? [petError, !pet ? "请先在 Magpie 选择宠物，再发起或加入对战。" : ""].filter(Boolean).join(" ")
     : "");
 
-  setText(byId("lan-title"), online ? "在线对战" : "局域网对战");
-  setText(byId("lan-description"), online
-    ? "查找同一对战服务上的玩家并发起挑战。"
-    : "查找同一局域网内的玩家并发起挑战。");
   const discover = byId("discover");
-  setText(discover, lan.discoverable ? (online ? "停止在线发现" : "停止发现") : (online ? "开启在线发现" : "开启发现"));
-  disableAction(discover, pending);
-  message("lan-empty", lan.peers.length ? "" : lan.discoverable
-    ? (online ? "正在扫描在线玩家。请好友开启在线发现。" : "正在扫描附近玩家。请好友在同一网络开启发现。")
-    : (online ? "开启在线发现后，即可查找在线玩家。" : "开启发现后，即可查找附近玩家。"));
-  byId("outgoing-challenge").hidden = !lan.challengePending;
+  setText(discover, lobby.discoverable ? "停止在线发现" : "开启在线发现");
+  disableAction(discover, pending || !relayConfigured || (!pet && !lobby.discoverable));
+  message("online-empty", !relayConfigured || lobby.peers.length ? "" : lobby.discoverable
+    ? "正在查找在线玩家。请好友也开启在线发现。"
+    : "开启在线发现后，即可查找在线玩家。");
+  byId("outgoing-challenge").hidden = !lobby.challengePending;
   disableAction(byId("cancel-challenge"), pending);
-  byId("invites-section").hidden = !lan.invites.length;
-  renderPlayers("peers", lan.peers, [["challenge", "挑战", "peerId", true]], !!pet && !lan.challengePending);
-  renderPlayers("invites", lan.invites, [
+  byId("invites-section").hidden = !lobby.invites.length;
+  renderPlayers("peers", lobby.peers, [["challenge", "挑战", "peerId", true]], !!pet && !lobby.challengePending);
+  renderPlayers("invites", lobby.invites, [
     ["accept", "接受", "inviteId", true],
     ["decline", "拒绝", "inviteId", false],
   ], !!pet);
 
-  byId("relay-notice").hidden = relayConfigured;
   const codeAvailable = !!pet && relayConfigured;
   byId("join-code").disabled = !codeAvailable;
-  byId("join-code").readOnly = pending || lan.challengePending;
-  disableAction(byId("create"), !codeAvailable || pending || lan.challengePending);
-  disableAction(byId("join"), !codeAvailable || pending || lan.challengePending);
+  byId("join-code").readOnly = pending || lobby.challengePending;
+  disableAction(byId("create"), !codeAvailable || pending || lobby.challengePending);
+  disableAction(byId("join"), !codeAvailable || pending || lobby.challengePending);
   disableAction(byId("resume"), pending);
 }
 
@@ -346,7 +341,7 @@ function renderArena() {
   const { room, mode } = status;
   const self = room.players[room.you];
   const opponent = room.players[1 - room.you];
-  setText(byId("room-mode"), { lan: "局域网对战", online: "在线对战", code: "对战码房间" }[mode] || "对战房间");
+  setText(byId("room-mode"), { online: "在线对战", code: "对战码房间" }[mode] || "对战房间");
   byId("room-code").hidden = mode !== "code" || room.phase !== "waiting" || !room.code;
   setText(byId("room-code-text"), room.code || "");
   setText(byId("leave"), room.phase === "playing" ? "退出对战" : "返回大厅");
@@ -390,7 +385,7 @@ function render() {
 function applyStatus(next) {
   const previous = status;
   const roomChanged = previous?.room?.code !== next.room?.code || !!previous?.room !== !!next.room;
-  const inviteCount = next.lan.invites.length;
+  const inviteCount = next.lobby.invites.length;
   if (roomChanged || next.room?.phase !== "playing" || previous?.room?.round !== next.room?.round) selection = null;
   if (roomChanged) savedLoadout = null;
   const active = document.activeElement;
@@ -402,7 +397,7 @@ function applyStatus(next) {
     const target = next.room ? byId("arena-title") : byId("lobby-title");
     target.focus();
   }
-  if (!next.room && inviteCount > (previous?.lan.invites.length || 0)) announce(`收到 ${inviteCount} 个挑战邀请。`);
+  if (!next.room && inviteCount > (previous?.lobby.invites.length || 0)) announce(`收到 ${inviteCount} 个挑战邀请。`);
 }
 
 class ArenaRequestError extends Error {}
@@ -431,7 +426,7 @@ async function request(path, data) {
       throw new ArenaRequestError("页面会话已失效，正在重新连接。");
     }
     const body = await response.json();
-    if (!response.ok || !body?.lan) throw new ArenaRequestError(body?.error || "对战服务暂时不可用。");
+    if (!response.ok || !body?.lobby) throw new ArenaRequestError(body?.error || "对战服务暂时不可用。");
     return body;
   } finally {
     clearTimeout(timeout);
@@ -444,7 +439,7 @@ function receiveStatus(next) {
   setConnection("online");
   applyStatus(next);
   if (checkResult) {
-    const confirmed = checkResult.action === "discover" && next.lan.discoverable === checkResult.enabled;
+    const confirmed = checkResult.action === "discover" && next.lobby.discoverable === checkResult.enabled;
     checkResult = null;
     if (!confirmed && !next.error) announce("连接已恢复，请确认刚才的操作是否生效。");
   }
@@ -516,7 +511,7 @@ function onAction(id, action, fields = () => undefined) {
   });
 }
 
-onAction("discover", "discover", () => ({ enabled: !status.lan.discoverable }));
+onAction("discover", "discover", () => ({ enabled: !status.lobby.discoverable }));
 onAction("cancel-challenge", "cancel-challenge");
 onAction("create", "create");
 onAction("resume", "resume");

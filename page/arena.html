@@ -45,13 +45,13 @@
         </div>
         <p class="notice" id="pet-notice" hidden></p>
         <div class="lobby-grid">
-          <section class="panel lan-panel" aria-labelledby="lan-title">
+          <section class="panel" aria-labelledby="online-title">
             <div class="panel-heading">
               <div>
-                <h2 id="lan-title">局域网对战</h2>
-                <p id="lan-description">查找同一局域网内的玩家并发起挑战。</p>
+                <h2 id="online-title">在线对战</h2>
+                <p id="online-description">开启发现后，同一对战服务上的玩家可看到你的出战宠物并发起挑战。</p>
               </div>
-              <button id="discover" class="button secondary" type="button" aria-describedby="lan-description">开启发现</button>
+              <button id="discover" class="button secondary" type="button" aria-describedby="online-description">开启在线发现</button>
             </div>
             <div class="panel-heading" id="outgoing-challenge" hidden>
               <p class="empty" role="status">挑战已发送，等待好友接受。</p>
@@ -61,8 +61,8 @@
               <h3 id="invites-title">收到的挑战</h3>
               <ul id="invites" class="players-list"></ul>
             </section>
-            <p class="empty" id="lan-empty"></p>
-            <ul id="peers" class="players-list" aria-label="附近玩家"></ul>
+            <p class="empty" id="online-empty"></p>
+            <ul id="peers" class="players-list" aria-label="在线玩家"></ul>
           </section>
 
           <section class="panel code-panel" aria-labelledby="code-title">
@@ -72,7 +72,6 @@
                 <p>创建房间分享对战码，或输入好友的对战码。</p>
               </div>
             </div>
-            <p class="notice" id="relay-notice" hidden>对战中继尚未配置。你仍可以使用局域网对战。</p>
             <button type="button" class="button primary" id="create">创建房间</button>
             <form id="join-form" class="join-form">
               <label id="join-code-label" for="join-code">好友的对战码</label>

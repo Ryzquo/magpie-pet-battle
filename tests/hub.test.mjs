@@ -59,7 +59,7 @@ test('health reports the protocol and features the relay supports', async () => 
     const response = await fetch(`http://127.0.0.1:${server.address().port}/health`);
     assert.equal(response.status, 200);
     const body = await response.json();
-    assert.deepEqual(body, { ok: true, protocol: 2, features: ['combat-stats'] });
+    assert.deepEqual(body, { ok: true, protocol: 2, features: ['combat-stats', 'innate-skills', 'match-score'] });
   } finally {
     server.close();
   }

@@ -125,6 +125,7 @@ test('simultaneous knockouts produce a draw and clear locked flags', () => {
   }
   const done = act(host, 'status');
   assert.equal(done.winner, 'draw');
+  assert.deepEqual(done.settlement.map(({ total }) => total), [1, 1]);
   assert.deepEqual(done.players.map(({ hp, locked }) => [hp, locked]), [[0, false], [0, false]]);
 });
 
@@ -137,8 +138,17 @@ test('timeouts reject stale moves and forfeiting resolves the match', () => {
   assert.throws(() => act(host, 'move', { round: 1, move: 'attack' }), { status: 409 });
   const fighter = act(host, 'status').players[0];
   assert.equal(fighter.hp, fighter.maxHp - 5);
-  act(host, 'leave');
-  assert.equal(act(guest, 'status').winner, 1);
+  const receipt = act(host, 'leave', { reviewSettlement: true });
+  assert.deepEqual(act(host, 'leave', { reviewSettlement: true }), receipt);
+  assert.equal(act(host, 'leave'), null);
+  const finished = act(guest, 'status');
+  assert.deepEqual(receipt.settlement, finished.settlement);
+  assert.equal(finished.winner, 1);
+  assert.deepEqual(finished.settlement, [
+    { resultPoints: -3, timeouts: 1, total: -4, forfeited: true },
+    { resultPoints: 3, timeouts: 0, total: 3, forfeited: false },
+  ]);
+  assert.deepEqual(act(host, 'status').settlement, finished.settlement);
 });
 
 test('round limit compares remaining health percentages, including an equal full-health match', () => {
@@ -154,6 +164,23 @@ test('round limit compares remaining health percentages, including an equal full
   const finished = act(guest, 'status');
   assert.notEqual(finished.players[0].hp, finished.players[1].hp);
   assert.equal(finished.winner, 'draw');
+  assert.deepEqual(finished.settlement.map(({ total }) => total), [-12, -12]);
+});
+
+test('a knockout awards the winner and charges the loser exactly once', () => {
+  let now = 0;
+  const { act, host, guest } = pair(createRooms({ clock: () => now, roundMs: 100 }));
+  start(act, host, guest);
+  let room = act(host, 'status');
+  while (room.phase === 'playing') {
+    act(host, 'move', { round: room.round, move: 'attack' });
+    now += 100;
+    room = act(guest, 'status');
+  }
+  assert.equal(room.players[1].hp, 0);
+  assert.deepEqual(room.settlement.map(({ resultPoints, total }) => [resultPoints, total]), [[3, 3], [-1, -1 - room.round]]);
+  act(host, 'leave');
+  assert.deepEqual(act(guest, 'status').settlement, room.settlement);
 });
 
 test('pending rooms expire even when the host polls, and join retries keep their seat', () => {

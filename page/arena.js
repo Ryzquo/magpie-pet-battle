@@ -314,7 +314,10 @@ function renderLoadout(id, fighter, rules, phase) {
     const cooldown = fighter.cooldowns?.[id] ?? 0;
     return phase === "playing" && cooldown ? `${name}（冷却 ${cooldown} 回合）` : name;
   });
-  setText(card.querySelector(".loadout-skills"), skills ? `已装备 ${skills.join("、")}` : "等待对手加入");
+  const innate = fighter?.innateSkill;
+  const innateCooldown = fighter?.cooldowns?.[innate?.id];
+  const innateText = innate ? ` · 固有技能 ${innate.name}${innateCooldown ? `（冷却 ${innateCooldown} 回合）` : ""}：${innate.description}（${skillDetails(innate)}）` : "";
+  setText(card.querySelector(".loadout-skills"), skills ? `已装备 ${skills.join("、")}${innateText}` : "等待对手加入");
 }
 
 const skillInputs = SKILLS.slice(1).map((id) => {
@@ -386,9 +389,14 @@ function battleCopy(room, self, opponent) {
     if (self?.locked) return [`第 ${room.round} 回合`, "招式已锁定，等待回合结算。"];
     return [`第 ${room.round} 回合`, "选定后将锁定招式。"];
   }
-  if (room.winner === "draw") return ["平局", "本场对战结束。"];
-  if (room.winner === room.you) return ["你赢了", "本场对战结束。"];
-  if (room.winner === 0 || room.winner === 1) return ["对手获胜", "本场对战结束。"];
+  const score = room.settlement?.[room.you];
+  const signed = (value) => value > 0 ? `+${value}` : `${value}`;
+  const detail = score ? `本场战绩 ${signed(score.total)} 分（赛果 ${signed(score.resultPoints)}，超时 ${score.timeouts} 次，每次扣 1 分）。` : "本场对战结束。";
+  if (score?.forfeited) return ["你已认负", detail];
+  if (room.settlement?.[1 - room.you]?.forfeited) return ["对手已认负", detail];
+  if (room.winner === "draw") return ["平局", detail];
+  if (room.winner === room.you) return ["你赢了", detail];
+  if (room.winner === 0 || room.winner === 1) return ["对手获胜", detail];
   return ["对战结束", ""];
 }
 
@@ -410,7 +418,7 @@ function renderLog(log) {
   list.replaceChildren(...log.map((line) => element("li", "", line)));
 }
 
-const moveButtons = Array.from({ length: EQUIPPED_COUNT + 1 }, () => {
+const moveButtons = Array.from({ length: EQUIPPED_COUNT + 2 }, () => {
   const button = element("button", "move");
   button.type = "button";
   button.append(element("strong"), element("span", "skill-description"), element("small"), element("small", "move-state"));
@@ -423,10 +431,16 @@ function renderRoundControls(room, self, rules) {
   controls.hidden = room.phase !== "playing" || !rules || !self;
   if (controls.hidden) return;
 
-  const moves = ["attack", ...self.skills];
+  const moves = ["attack", ...self.skills, self.innateSkill?.id];
   moveButtons.forEach((button, index) => {
     const id = moves[index];
-    const skill = rules.skills[id];
+    button.hidden = !id;
+    if (!id) {
+      delete button.dataset.move;
+      return;
+    }
+    const innate = id === self.innateSkill?.id;
+    const skill = innate ? self.innateSkill : rules.skills[id];
     const cooldown = self.cooldowns?.[id] ?? 0;
     const selected = selection?.move === id;
     const needsEnergy = skill.cost > self.energy;
@@ -435,7 +449,7 @@ function renderRoundControls(room, self, rules) {
       .filter(Boolean).join(" · ");
     button.dataset.move = id;
     button.toggleAttribute("data-selected", selected);
-    setText(button.children[0], skill.name);
+    setText(button.children[0], innate ? `固有 · ${skill.name}` : skill.name);
     setText(button.children[1], skill.description);
     setText(button.children[2], skillDetails(skill));
     setText(button.children[3], self.locked ? selectedLabel : availability || "可用");
@@ -450,7 +464,7 @@ function renderArena() {
   setText(byId("room-mode"), { online: "在线对战", code: "对战码房间" }[mode] || "对战房间");
   byId("room-code").hidden = mode !== "code" || room.phase !== "waiting" || !room.code;
   setText(byId("room-code-text"), room.code || "");
-  setText(byId("leave"), room.phase === "playing" ? "退出对战" : "返回大厅");
+  setText(byId("leave"), room.phase === "playing" ? (room.settlement === null ? "认负结算（−3 分）" : "退出对战") : "返回大厅");
   disableAction(byId("leave"), pending);
   const rules = supportsRules(room.rules) ? room.rules : null;
   stage.update(room, rules, connection === "online");
@@ -623,7 +637,7 @@ onAction("discover", "discover", () => ({ enabled: !status.lobby.discoverable })
 onAction("cancel-challenge", "cancel-challenge");
 onAction("create", "create");
 onAction("resume", "resume");
-onAction("leave", "leave");
+onAction("leave", "leave", () => ({ reviewSettlement: status?.room?.phase === "playing" }));
 
 const loadoutForm = byId("loadout-form");
 loadoutForm.addEventListener("input", () => updateLoadoutControls(status.room.rules));

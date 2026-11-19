@@ -3,7 +3,7 @@ const MOVES = {
   attack: "普攻", break: "破甲", shield: "护盾", counter: "反击",
   charge: "蓄力", heavy: "重击", heal: "回复",
 };
-const ATTACKS = new Set(["attack", "break", "heavy"]);
+const ATTACKS = new Set(["attack", "break", "heavy", "flare", "tide"]);
 const PALETTES = [164, 204, 267, 324, 22, 47];
 
 function layer(parent, tag, className) {
@@ -91,7 +91,7 @@ function directDamage(action, opponent) {
 
 function describe(round, action, opponent, rules, step) {
   const move = action.move;
-  const name = rules?.skills?.[move]?.name || MOVES[move] || "超时";
+  const name = action.name || rules?.skills?.[move]?.name || MOVES[move] || "超时";
   const pieces = [`第 ${round} 回合`, name];
   const damage = step >= 2 ? action.damage : directDamage(action, opponent);
   if (step >= 1 && damage > 0) pieces.push(`受伤 ${damage}`);
@@ -134,6 +134,7 @@ export function createStage(board, token) {
     heldHp = null;
     for (const { portrait } of fighters) {
       delete portrait.dataset.move;
+      delete portrait.dataset.effect;
       delete portrait.dataset.beat;
       delete portrait.dataset.hit;
       delete portrait.dataset.counter;
@@ -190,9 +191,11 @@ export function createStage(board, token) {
     fighters.forEach(({ portrait }, index) => {
       delete portrait.dataset.outcome;
       portrait.dataset.move = actions[index].move || "timeout";
+      if (actions[index].effect) portrait.dataset.effect = actions[index].effect;
       portrait.dataset.beat = "prep";
       portrait.toggleAttribute("data-strike", ATTACKS.has(actions[index].move));
       portrait.toggleAttribute("data-counter", actions[index].counter > 0);
+      portrait.style.setProperty("--stage-range", `${distance}px`);
       portrait.style.setProperty("--stage-lunge", `${simultaneous ? travel / 2 : travel}px`);
     });
 

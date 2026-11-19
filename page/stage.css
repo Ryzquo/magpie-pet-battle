@@ -98,8 +98,13 @@
 .stage-art::before { left: 2%; transform: scaleX(-1) rotate(16deg); }
 .stage-art::after { right: 2%; transform: rotate(16deg); }
 
+.stage-art { transform: scaleX(var(--stage-direction)); }
+/* Catalog frames face left. Mirror the artwork independently of stage movement. */
+.stage-sprite { transform: scaleX(calc(-1 * var(--stage-direction))); }
+
 .stage-face {
   position: relative;
+  left: 15%;
   width: 55%;
   height: 57%;
   background:
@@ -182,10 +187,10 @@
 .stage-badge:is([data-move="break"], [data-move="heavy"], [data-move="timeout"]) { border-color: #ffc69480; }
 .stage-badge:is([data-move="charge"], [data-move="heal"]) { border-color: #aaedc680; }
 
-.stage-portrait:is([data-move="attack"], [data-move="heavy"], [data-move="break"])[data-beat="prep"] .stage-pet {
+.stage-portrait[data-strike][data-beat="prep"] .stage-pet {
   animation: pet-stage-lunge 230ms ease-out both;
 }
-.stage-portrait:is([data-move="attack"], [data-move="heavy"], [data-move="break"])[data-beat="impact"] .stage-pet {
+.stage-portrait[data-strike][data-beat="impact"] .stage-pet {
   animation: pet-stage-recover 250ms ease-out both;
 }
 .stage-portrait[data-move="heavy"][data-beat="prep"] .stage-pet { animation-timing-function: cubic-bezier(.7, 0, .9, 1); }
@@ -221,6 +226,51 @@
   background: radial-gradient(ellipse, #91ffb763, transparent 72%);
   box-shadow: 0 0 14px #7ef2ad75;
   animation: pet-stage-effect 310ms ease-out both;
+}
+.stage-portrait[data-move="flare"][data-beat="impact"] .stage-effect {
+  border: 0;
+  inset: 37% auto auto 35%;
+  width: 30%;
+  aspect-ratio: 1.4;
+  border-radius: 50%;
+  --flame-edge: #ff6026;
+  --flame-core: #ffeca5;
+  background: radial-gradient(ellipse, white 5%, var(--flame-core) 28%, var(--flame-edge) 60%, transparent 75%);
+  filter: drop-shadow(0 0 4px var(--flame-edge));
+  animation: pet-stage-projectile 290ms ease-out both;
+}
+.stage-portrait[data-move="flare"][data-effect="blue-flame"][data-beat="impact"] .stage-effect {
+  --flame-edge: #3169fc;
+  --flame-core: #ccf9ff;
+}
+.stage-portrait[data-move="flare"][data-effect="magic-flame"][data-beat="impact"] .stage-effect {
+  background: conic-gradient(from 30deg, transparent 12%, #5af7a2 43%, #ecffba 48%, transparent 52%, #78f2b9 89%, transparent);
+}
+.stage-portrait[data-move="flare"][data-effect="gust"][data-beat="impact"] .stage-effect {
+  border-radius: 50%;
+  background: repeating-radial-gradient(ellipse, transparent 0 20%, #d6fcff 24%, transparent 28%);
+}
+.stage-portrait[data-move="flare"][data-effect="spark"][data-beat="impact"] .stage-effect {
+  clip-path: polygon(59% 0, 31% 49%, 57% 49%, 40% 100%, 78% 39%, 52% 39%, 70% 0);
+  background: linear-gradient(#f4ff93, #ffa84c);
+}
+.stage-portrait[data-move="tide"]:is([data-beat="impact"], [data-beat="settle"]) .stage-effect {
+  border-color: #90f7ef;
+  background: repeating-radial-gradient(ellipse, transparent 0 15%, #5de4d8a6 18%, transparent 23%);
+  animation: pet-stage-effect 300ms ease-out both;
+}
+.stage-portrait[data-move="aegis"]:is([data-beat="prep"], [data-beat="impact"]) .stage-effect {
+  opacity: 1;
+  border: 0;
+  border-radius: 0;
+  clip-path: polygon(50% 0, 92% 20%, 85% 73%, 50% 100%, 15% 73%, 8% 20%);
+  background: conic-gradient(from 35deg, #cab2ffd6, #846ade45, #c1d9ffb3, #745dcf50, #cab2ffd6);
+}
+.stage-portrait[data-move="aegis"][data-effect="ivy"]:is([data-beat="prep"], [data-beat="impact"]) .stage-effect {
+  border: 3px solid #86ce78;
+  border-radius: 45% 55% 44% 56%;
+  clip-path: none;
+  background: repeating-linear-gradient(53deg, transparent 0 17%, #48c965a6 20%, transparent 24%);
 }
 .stage-portrait[data-move="timeout"][data-beat="prep"] .stage-pet { transform: translateY(5%) scale(.94, .89); }
 .stage-portrait[data-hit] .stage-pet { filter: drop-shadow(0 0 6px #ffa39f); }
@@ -259,6 +309,12 @@
   0% { transform: scale(.95, .85); }
   38% { transform: translateX(calc(var(--stage-direction) * var(--stage-lunge))) translateY(-18%) scale(1.1); }
   100% { transform: none; }
+}
+@keyframes pet-stage-projectile {
+  0% { opacity: 0; transform: translateX(calc(var(--stage-direction) * var(--stage-lunge))) scale(.55); }
+  22% { opacity: 1; }
+  80% { opacity: .95; }
+  100% { opacity: 0; transform: translateX(calc(var(--stage-direction) * var(--stage-range))) scale(1.2); }
 }
 @keyframes pet-stage-effect {
   0% { opacity: 1; transform: scale(.82); }

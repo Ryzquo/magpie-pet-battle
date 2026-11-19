@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createHub } from '../lib/hub.mjs';
+import { createHub, hubHandler } from '../lib/hub.mjs';
+import { listen } from '../lib/http.mjs';
+import { createRooms } from '../lib/rooms.mjs';
 
 const pet = { name: '星光', species: '1-1', stage: 1 };
 const idA = '11111111-1111-1111-1111-111111111111';
@@ -49,4 +51,16 @@ test('hub expires silent peers and stale invites', () => {
 
   now = 60_001;
   assert.deepEqual(hub.announce({ id: idA, pet }).invites, []);
+});
+
+test('health reports the protocol and features the relay supports', async () => {
+  const server = await listen(hubHandler(createHub(), createRooms()), 0, '127.0.0.1');
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/health`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body, { ok: true, protocol: 2, features: ['combat-stats'] });
+  } finally {
+    server.close();
+  }
 });

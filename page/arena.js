@@ -1,13 +1,13 @@
-"use strict";
+import { createStage } from "./stage.js";
 
 const byId = (id) => document.getElementById(id);
 const token = document.querySelector('meta[name="arena-token"]').content;
+const stage = createStage(document.querySelector(".board"), token);
 const ATTRIBUTES = { attack: "攻击", defense: "防御", vitality: "体力" };
 const SKILLS = ["attack", "break", "shield", "counter", "charge", "heavy", "heal"];
 const EQUIPPED_COUNT = 2;
 const ATTRIBUTE_LABELS = { vaccine: "疫苗", virus: "病毒", data: "数据" };
-const SPRITE_MODES = { idle: [0, 1], attack: [6, 7], happy: [2, 0], hurt: [13, 0], sleep: [11, 12] };
-const SPRITE_VERSION = 1;
+const IDLE_FRAMES = [0, 1];
 const pointInputs = [...byId("point-fields").querySelectorAll("input")];
 const POLL_INTERVAL = 1000;
 const REQUEST_TIMEOUT = 5000;
@@ -26,8 +26,7 @@ let selection = null;
 let savedLoadout = null;
 const spriteAnimations = new Map();
 const spriteFailures = new Set();
-let attackUntil = { self: 0, opponent: 0 };
-let lastRoomState = null;
+const spriteFrames = new Map();
 
 function setText(element, text) {
   if (element.textContent !== text) element.textContent = text;
@@ -51,54 +50,63 @@ function setConnection(next) {
   setText(element, labels[next]);
 }
 
-function petDetails(pet) {
-  return [pet?.species, pet?.stage != null ? `阶段 ${pet.stage}` : ""].filter(Boolean).join(" · ");
+function petDetails(pet, showStats = false) {
+  const stats = pet?.combatStats;
+  return [pet?.species, pet?.stage != null ? `阶段 ${pet.stage}` : "",
+    showStats && stats ? `图鉴力量 ${stats.strength} / 闪避 ${stats.evasion}` : ""].filter(Boolean).join(" · ");
 }
 
 function attributeLabel(attribute) {
   return ATTRIBUTE_LABELS[attribute] || "";
 }
 
-function spriteUrl(sprite, frame) {
-  return `/sprite/${encodeURIComponent(sprite)}/${frame}.png?v=${SPRITE_VERSION}`;
+function framesFor(speciesId) {
+  if (!speciesId || !/^[1-7]-\d{1,12}$/.test(speciesId)) return Promise.resolve([]);
+  if (!spriteFrames.has(speciesId)) {
+    const request = fetch(`/api/sprite/${encodeURIComponent(speciesId)}`, { headers: { "X-Arena-Token": token } })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => Array.isArray(data?.frames) ? data.frames : [])
+      .catch(() => []);
+    spriteFrames.set(speciesId, request);
+  }
+  return spriteFrames.get(speciesId);
 }
 
-function animateSprite(img, sprite, mode, key) {
+function animateSprite(img, speciesId, key, portrait) {
   if (!img) return;
-  if (!sprite || spriteFailures.has(sprite)) {
-    img.hidden = true;
-    const portrait = img.closest(".portrait");
+  const state = spriteAnimations.get(key);
+  if (state?.speciesId === speciesId) return;
+  if (state) {
+    clearInterval(state.timer);
+    spriteAnimations.delete(key);
+  }
+  img.hidden = true;
+  if (!speciesId || spriteFailures.has(speciesId)) {
     if (portrait) portrait.dataset.sprite = "false";
-    const state = spriteAnimations.get(key);
-    if (state) {
-      clearInterval(state.timer);
-      spriteAnimations.delete(key);
-    }
     return;
   }
-  const frames = SPRITE_MODES[mode] || SPRITE_MODES.idle;
-  const state = spriteAnimations.get(key);
-  if (state?.sprite === sprite && state.mode === mode) return;
-  if (state) clearInterval(state.timer);
-  let index = 0;
-  const paint = () => {
-    img.hidden = false;
-    img.src = spriteUrl(sprite, frames[index % frames.length]);
-    index += 1;
-  };
-  img.onerror = () => {
-    spriteFailures.add(sprite);
-    img.hidden = true;
-    const portrait = img.closest(".portrait");
-    if (portrait) portrait.dataset.sprite = "false";
-    const current = spriteAnimations.get(key);
-    if (current) {
-      clearInterval(current.timer);
+  const token = {};
+  spriteAnimations.set(key, { speciesId, timer: null, token });
+  framesFor(speciesId).then((frames) => {
+    if (spriteAnimations.get(key)?.token !== token) return;
+    const idle = IDLE_FRAMES.map((index) => frames[index]).filter(Boolean);
+    if (!idle.length) {
+      spriteFailures.add(speciesId);
       spriteAnimations.delete(key);
+      if (portrait) portrait.dataset.sprite = "false";
+      return;
     }
-  };
-  paint();
-  spriteAnimations.set(key, { sprite, mode, timer: setInterval(paint, 400) });
+    if (portrait) portrait.dataset.sprite = "true";
+    let index = 0;
+    const paint = () => {
+      img.hidden = false;
+      img.src = idle[index % idle.length];
+      index += 1;
+    };
+    paint();
+    const timer = setInterval(paint, 400);
+    spriteAnimations.set(key, { speciesId, timer, token });
+  });
 }
 
 function setAttributeBadge(element, attribute) {
@@ -160,71 +168,75 @@ function renderPlayers(id, players, actions, petAvailable) {
     previous.delete(key);
     if (row !== position) list.insertBefore(row, position);
     position = row.nextElementSibling;
-    const name = player.name || "附近玩家";
+    const name = player.name || "在线玩家";
     const petName = typeof player.pet === "string" ? player.pet : player.pet?.name;
-    const detail = petName && petName !== name ? petName : petDetails(player.pet);
+    const detail = player.pet ? [petName !== name ? petName : "", petDetails(player.pet)].filter(Boolean).join(" · ") : "未选择出战宠物";
     const pet = player.pet && typeof player.pet === "object" ? player.pet : null;
     setText(row.querySelector("strong"), name);
     const description = row.querySelector(".player-text p");
     setText(description, [detail, attributeLabel(pet?.attribute)].filter(Boolean).join(" · "));
     description.hidden = !description.textContent;
     const mini = row.querySelector(".mini-sprite");
-    if (pet?.sprite) {
-      mini.hidden = false;
-      mini.src = spriteUrl(pet.sprite, 0);
-      mini.alt = `${name} 的形象`;
-    } else {
+    const miniKey = pet?.speciesId || "";
+    if (mini.dataset.species !== miniKey) {
+      mini.dataset.species = miniKey;
       mini.hidden = true;
-      mini.removeAttribute("src");
+      mini.alt = pet?.speciesId ? `${name} 的形象` : "";
+      if (pet?.speciesId) {
+        framesFor(pet.speciesId).then((frames) => {
+          const first = frames[IDLE_FRAMES[0]] || frames.find(Boolean);
+          if (mini.dataset.species !== miniKey) return;
+          if (first) {
+            mini.src = first;
+            mini.hidden = false;
+          }
+        });
+      } else {
+        mini.removeAttribute("src");
+      }
     }
     for (const button of row.querySelectorAll("button")) {
       button.setAttribute("aria-label", `${button.textContent}（${name}）`);
-      disableAction(button, pending || (button.hasAttribute("data-pet-required") && !petAvailable));
+      disableAction(button, pending || (button.hasAttribute("data-pet-required") && !petAvailable) ||
+        (button.dataset.action === "challenge" && !player.pet));
     }
   }
   for (const row of previous.values()) row.remove();
 }
 
 function renderLobby() {
-  const { pet, petError, lan, relayConfigured } = status;
-  const online = relayConfigured;
+  const { pet, petError, lobby, relayConfigured } = status;
   byId("pet-card").dataset.empty = String(!pet);
   setText(byId("pet-name"), pet?.name || "暂无宠物");
-  message("pet-meta", petDetails(pet));
+  message("pet-meta", petDetails(pet, true));
   const portrait = byId("pet-card").querySelector(".portrait");
-  portrait.dataset.sprite = String(Boolean(pet?.sprite));
-  animateSprite(byId("pet-sprite"), pet?.sprite, "idle", "lobby");
+  animateSprite(byId("pet-sprite"), pet?.speciesId, "lobby", portrait);
   setAttributeBadge(byId("pet-attribute"), pet?.attribute);
   message("care-stats", pet?.care ? careText(pet.care) : "");
   message("pet-notice", !pet || petError
     ? [petError, !pet ? "请先在 Magpie 选择宠物，再发起或加入对战。" : ""].filter(Boolean).join(" ")
     : "");
 
-  setText(byId("lan-title"), online ? "在线对战" : "局域网对战");
-  setText(byId("lan-description"), online
-    ? "查找同一对战服务上的玩家并发起挑战。"
-    : "查找同一局域网内的玩家并发起挑战。");
   const discover = byId("discover");
-  setText(discover, lan.discoverable ? (online ? "停止在线发现" : "停止发现") : (online ? "开启在线发现" : "开启发现"));
-  disableAction(discover, pending);
-  message("lan-empty", lan.peers.length ? "" : lan.discoverable
-    ? (online ? "正在扫描在线玩家。请好友开启在线发现。" : "正在扫描附近玩家。请好友在同一网络开启发现。")
-    : (online ? "开启在线发现后，即可查找在线玩家。" : "开启发现后，即可查找附近玩家。"));
-  byId("outgoing-challenge").hidden = !lan.challengePending;
+  setText(discover, lobby.discoverable ? "停止在线发现" : "开启在线发现");
+  disableAction(discover, pending || !relayConfigured || (!pet && !lobby.discoverable));
+  message("online-empty", !relayConfigured || lobby.peers.length ? "" : lobby.discoverable
+    ? "正在查找在线玩家。请好友也开启在线发现。"
+    : "开启在线发现后，即可查找在线玩家。");
+  byId("outgoing-challenge").hidden = !lobby.challengePending;
   disableAction(byId("cancel-challenge"), pending);
-  byId("invites-section").hidden = !lan.invites.length;
-  renderPlayers("peers", lan.peers, [["challenge", "挑战", "peerId", true]], !!pet && !lan.challengePending);
-  renderPlayers("invites", lan.invites, [
+  byId("invites-section").hidden = !lobby.invites.length;
+  renderPlayers("peers", lobby.peers, [["challenge", "挑战", "peerId", true]], !!pet && !lobby.challengePending);
+  renderPlayers("invites", lobby.invites, [
     ["accept", "接受", "inviteId", true],
     ["decline", "拒绝", "inviteId", false],
   ], !!pet);
 
-  byId("relay-notice").hidden = relayConfigured;
   const codeAvailable = !!pet && relayConfigured;
   byId("join-code").disabled = !codeAvailable;
-  byId("join-code").readOnly = pending || lan.challengePending;
-  disableAction(byId("create"), !codeAvailable || pending || lan.challengePending);
-  disableAction(byId("join"), !codeAvailable || pending || lan.challengePending);
+  byId("join-code").readOnly = pending || lobby.challengePending;
+  disableAction(byId("create"), !codeAvailable || pending || lobby.challengePending);
+  disableAction(byId("join"), !codeAvailable || pending || lobby.challengePending);
   disableAction(byId("resume"), pending);
 }
 
@@ -241,27 +253,24 @@ function skillDetails(skill) {
   return `消耗 ${skill.cost} 能量 · 冷却 ${skill.cooldown} 回合`;
 }
 
-function renderFighter(id, fighter, phase, rules, mode) {
+function renderFighter(id, fighter, phase, rules) {
   const card = byId(id);
   card.dataset.empty = String(!fighter);
   setText(card.querySelector(".fighter-name"), fighter?.pet?.name || "等待加入");
   const meta = card.querySelector(".fighter-meta");
-  const details = petDetails(fighter?.pet);
+  const details = petDetails(fighter?.pet, true);
   setText(meta, details);
   meta.hidden = !details;
-  const portrait = card.querySelector(".portrait");
-  const sprite = fighter?.pet?.sprite;
-  portrait.dataset.sprite = String(Boolean(sprite));
-  animateSprite(card.querySelector(".fighter-sprite"), sprite, mode || "idle", id);
   setAttributeBadge(card.querySelector(".fighter-attribute"), fighter?.pet?.attribute);
 
   const vitals = card.querySelector(".fighter-vitals");
   vitals.hidden = !fighter || !Number.isFinite(fighter.maxHp) || fighter.maxHp <= 0;
   if (!vitals.hidden) {
     const health = card.querySelector(".health");
+    const hp = stage.visualHp(id === "fighter-self" ? "self" : "opponent", fighter.hp);
     health.max = fighter.maxHp;
-    health.value = fighter.hp;
-    setText(card.querySelector(".health-label"), `生命 ${fighter.hp} / ${fighter.maxHp}`);
+    health.value = hp;
+    setText(card.querySelector(".health-label"), `生命 ${hp} / ${fighter.maxHp}`);
     const energy = card.querySelector(".energy");
     energy.hidden = !rules;
     if (rules) setText(energy, `能量 ${fighter.energy} / ${rules.maxEnergy}`);
@@ -434,52 +443,20 @@ function renderRoundControls(room, self, rules) {
   });
 }
 
-function fighterMode(fighter, room, side, now) {
-  if (!fighter) return "sleep";
-  if (room.phase === "finished") {
-    if (room.winner === "draw") return "idle";
-    const winner = room.winner === room.you ? "self" : "opponent";
-    return winner === side ? "happy" : "hurt";
-  }
-  if (room.phase === "playing") {
-    if (attackUntil[side] > now || fighter.locked) return "attack";
-    if (fighter.hp > 0 && fighter.hp <= fighter.maxHp * 0.3) return "hurt";
-    return "idle";
-  }
-  return "idle";
-}
-
 function renderArena() {
   const { room, mode } = status;
   const self = room.players[room.you];
   const opponent = room.players[1 - room.you];
-  setText(byId("room-mode"), { lan: "局域网对战", online: "在线对战", code: "对战码房间" }[mode] || "对战房间");
+  setText(byId("room-mode"), { online: "在线对战", code: "对战码房间" }[mode] || "对战房间");
   byId("room-code").hidden = mode !== "code" || room.phase !== "waiting" || !room.code;
   setText(byId("room-code-text"), room.code || "");
   setText(byId("leave"), room.phase === "playing" ? "退出对战" : "返回大厅");
   disableAction(byId("leave"), pending);
   const rules = supportsRules(room.rules) ? room.rules : null;
+  stage.update(room, rules, connection === "online");
   message("rules-notice", rules ? "" : "此房间的对战规则与当前版本不兼容。请退出房间，确认双方和中继的版本后重试。");
-  const now = Date.now();
-  const previous = lastRoomState;
-  if (!previous || previous.code !== room.code) {
-    lastRoomState = { code: room.code, round: room.round,
-      selfLocked: Boolean(self?.locked), opponentLocked: Boolean(opponent?.locked) };
-    attackUntil = { self: 0, opponent: 0 };
-  } else {
-    if (room.phase === "playing" && previous.round !== room.round) {
-      attackUntil.self = now + 1200;
-      attackUntil.opponent = now + 1200;
-    }
-    if (self?.locked && !previous.selfLocked) attackUntil.self = now + 1200;
-    if (opponent?.locked && !previous.opponentLocked) attackUntil.opponent = now + 1200;
-    lastRoomState = { code: room.code, round: room.round,
-      selfLocked: Boolean(self?.locked), opponentLocked: Boolean(opponent?.locked) };
-  }
-  const selfMode = fighterMode(self, room, "self", now);
-  const opponentMode = fighterMode(opponent, room, "opponent", now);
-  renderFighter("fighter-self", self, room.phase, rules, selfMode);
-  renderFighter("fighter-opponent", opponent, room.phase, rules, opponentMode);
+  renderFighter("fighter-self", self, room.phase, rules);
+  renderFighter("fighter-opponent", opponent, room.phase, rules);
   byId("room-loadouts").hidden = !rules;
   if (rules) {
     renderLoadout("loadout-self", self, rules, room.phase);
@@ -508,6 +485,7 @@ function render() {
   } else if (status.room) {
     renderArena();
   } else {
+    stage.update(null);
     renderLobby();
   }
 }
@@ -515,7 +493,7 @@ function render() {
 function applyStatus(next) {
   const previous = status;
   const roomChanged = previous?.room?.code !== next.room?.code || !!previous?.room !== !!next.room;
-  const inviteCount = next.lan.invites.length;
+  const inviteCount = next.lobby.invites.length;
   if (roomChanged || next.room?.phase !== "playing" || previous?.room?.round !== next.room?.round) selection = null;
   if (roomChanged) savedLoadout = null;
   const active = document.activeElement;
@@ -527,7 +505,7 @@ function applyStatus(next) {
     const target = next.room ? byId("arena-title") : byId("lobby-title");
     target.focus();
   }
-  if (!next.room && inviteCount > (previous?.lan.invites.length || 0)) announce(`收到 ${inviteCount} 个挑战邀请。`);
+  if (!next.room && inviteCount > (previous?.lobby.invites.length || 0)) announce(`收到 ${inviteCount} 个挑战邀请。`);
 }
 
 class ArenaRequestError extends Error {}
@@ -556,7 +534,7 @@ async function request(path, data) {
       throw new ArenaRequestError("页面会话已失效，正在重新连接。");
     }
     const body = await response.json();
-    if (!response.ok || !body?.lan) throw new ArenaRequestError(body?.error || "对战服务暂时不可用。");
+    if (!response.ok || !body?.lobby) throw new ArenaRequestError(body?.error || "对战服务暂时不可用。");
     return body;
   } finally {
     clearTimeout(timeout);
@@ -569,7 +547,7 @@ function receiveStatus(next) {
   setConnection("online");
   applyStatus(next);
   if (checkResult) {
-    const confirmed = checkResult.action === "discover" && next.lan.discoverable === checkResult.enabled;
+    const confirmed = checkResult.action === "discover" && next.lobby.discoverable === checkResult.enabled;
     checkResult = null;
     if (!confirmed && !next.error) announce("连接已恢复，请确认刚才的操作是否生效。");
   }
@@ -641,7 +619,7 @@ function onAction(id, action, fields = () => undefined) {
   });
 }
 
-onAction("discover", "discover", () => ({ enabled: !status.lan.discoverable }));
+onAction("discover", "discover", () => ({ enabled: !status.lobby.discoverable }));
 onAction("cancel-challenge", "cancel-challenge");
 onAction("create", "create");
 onAction("resume", "resume");

@@ -101,11 +101,11 @@ main:focus { outline: none; }
 .portrait-small { --portrait-size: 35px; }
 .fighter-opponent .portrait { --pet-top: #f0c4d7; --pet-bottom: #cf89ab; color: #47203a; }
 [data-empty="true"] .portrait { opacity: .42; filter: saturate(0); }
-.portrait img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.portrait > img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
 .portrait[data-sprite="true"] { background: transparent; box-shadow: none; }
 .portrait[data-sprite="true"]::before,
 .portrait[data-sprite="true"]::after,
-.portrait[data-sprite="true"] i { display: none; }
+.portrait[data-sprite="true"] > i { display: none; }
 
 .attribute-badge { display: inline-block; margin-top: 3px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); color: var(--muted); font-size: .7rem; line-height: 1.7; }
 .attribute-badge[data-attribute="vaccine"] { color: var(--accent); border-color: var(--accent); }
@@ -201,6 +201,8 @@ input:disabled { opacity: .75; }
 .move[data-selected] .move-state { color: var(--accent); }
 .history ol { padding-inline-start: 1.3rem; margin-block: 8px 0; color: var(--muted); font-size: .88rem; }
 .history li + li { margin-top: 4px; }
+.stage-credit { color: var(--muted); font-size: .75rem; text-align: center; }
+.stage-credit a { color: inherit; }
 
 @media (max-width: 610px) {
   .lobby-grid { grid-template-columns: 1fr; }

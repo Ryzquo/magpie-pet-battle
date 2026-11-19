@@ -1,7 +1,7 @@
 {
   "name": "magpie-pet-battle",
   "version": "0.2.0",
-  "description": "LAN and invite-code pet battles for Magpie",
+  "description": "Online and invite-code pet battles for Magpie",
   "repository": { "type": "git", "url": "git+https://github.com/Ryzquo/magpie-pet-battle.git" },
   "keywords": ["magpie-plugin", "digital-pet", "multiplayer"],
   "type": "module",

@@ -5,13 +5,11 @@ import { cleanPet, createRooms } from '../lib/rooms.mjs';
 const pet = { name: '星光', species: '1-1', stage: 1 };
 const points = { attack: 2, defense: 2, vitality: 2 };
 
-test('pet appearance and attribute survive validation while unsafe values are dropped', () => {
-  const clean = cleanPet({ ...pet, sprite: 'Chaosdramon', attribute: 'virus' });
-  assert.equal(clean.sprite, 'Chaosdramon');
+test('pet attribute survives validation while unsafe values are dropped', () => {
+  const clean = cleanPet({ ...pet, speciesId: '1-001', attribute: 'virus' });
   assert.equal(clean.attribute, 'virus');
-  const unsafe = cleanPet({ ...pet, sprite: '../etc/passwd', attribute: 'fire' });
-  assert.equal(unsafe.sprite, undefined);
-  assert.equal(unsafe.attribute, undefined);
+  assert.equal(cleanPet({ ...pet, attribute: 'fire' }).attribute, undefined);
+  assert.equal(cleanPet({ ...pet, attribute: 'VIRUS' }).attribute, undefined);
 });
 
 function pair(rooms) {
@@ -48,6 +46,22 @@ test('equal base budgets, strict loadout validation, visible builds, and locked 
   assert.equal(act(guest, 'ready').phase, 'playing');
 });
 
+test('both seats see the original stats and get equal base budgets from their respective stats', () => {
+  const rooms = createRooms();
+  const hostPet = { ...pet, speciesId: '1-001', combatStats: { strength: 90, evasion: 10 } };
+  const guestPet = { ...pet, speciesId: '1-002', combatStats: { strength: 10, evasion: 90 } };
+  const { room: { code } } = rooms('create', { pet: hostPet });
+  const { room } = rooms('join', { code, pet: guestPet });
+  assert.deepEqual(room.players.map((player) => player.pet.combatStats), [hostPet.combatStats, guestPet.combatStats]);
+  assert.deepEqual(room.players.map((player) => player.base), [
+    { attack: 6, defense: 2, vitality: 4 },
+    { attack: 2, defense: 6, vitality: 4 },
+  ]);
+  const { room: fallback } = rooms('create', { pet: { ...hostPet, combatStats: { strength: 101, evasion: 10 } } });
+  assert.equal(fallback.players[0].pet.combatStats, undefined);
+  assert.equal(Object.values(fallback.players[0].base).reduce((sum, stat) => sum + stat, 0), 12);
+});
+
 test('moves are secret until settlement and energy, cooldowns and status effects are enforced', () => {
   const { act, host, guest } = pair(createRooms());
   start(act, host, guest, ['charge', 'heavy'], ['break', 'shield']);
@@ -56,6 +70,7 @@ test('moves are secret until settlement and energy, cooldowns and status effects
   assert.throws(() => act(host, 'move', { round: 1, move: 'shield' }), /未装备/);
   act(host, 'move', { round: 1, move: 'charge' });
   const waiting = act(guest, 'status');
+  assert.equal(waiting.lastRound, null);
   assert.equal(waiting.players[0].locked, true);
   assert.equal(waiting.players[0].move, undefined);
   assert.equal(waiting.players[0].charged, false);
@@ -82,6 +97,13 @@ test('counter and healing resolve simultaneously with attack damage', () => {
   act(host, 'move', { round: 1, move: 'counter' });
   const afterCounter = act(guest, 'move', { round: 1, move: 'attack' });
   assert.ok(afterCounter.players.every((player) => player.hp < player.maxHp));
+  const { actions } = afterCounter.lastRound;
+  assert.equal(afterCounter.lastRound.round, 1);
+  assert.deepEqual(actions.map(({ move }) => move), ['counter', 'attack']);
+  assert.ok(actions[0].counter > 0);
+  assert.equal(actions[1].damage, actions[0].counter);
+  assert.deepEqual(actions.map(({ hp }) => hp), afterCounter.players.map(({ hp }) => hp));
+  assert.deepEqual(act(host, 'status').lastRound, afterCounter.lastRound);
   act(host, 'move', { round: 2, move: 'attack' });
   const beforeHeal = act(guest, 'move', { round: 2, move: 'shield' });
   act(host, 'move', { round: 3, move: 'heal' });

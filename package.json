@@ -1,0 +1,22 @@
+{
+  "name": "magpie-pet-battle",
+  "version": "0.1.0",
+  "description": "LAN and invite-code pet battles for Magpie",
+  "repository": { "type": "git", "url": "git+https://github.com/Ryzquo/magpie-pet-battle.git" },
+  "keywords": ["magpie-plugin", "digital-pet", "multiplayer"],
+  "type": "module",
+  "main": "./index.mjs",
+  "files": ["index.mjs", "lib", "page", "server.mjs", "README.md", "VERSION", "docs", "tests"],
+  "scripts": { "test": "node --test tests/*.test.mjs", "serve": "node server.mjs" },
+  "engines": { "magpie": ">=0.1.1340", "node": ">=22" },
+  "magpie": {
+    "name": "Pet Battle",
+    "page": {
+      "title": "Pet Battle",
+      "titles": { "zh": "宠物对战", "zh-TW": "寵物對戰" },
+      "file": "page/index.html",
+      "service": { "port": 3572 }
+    },
+    "options": { "relayUrl": "", "petDbPath": "" }
+  }
+}

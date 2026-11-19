@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="arena-token" content="__ARENA_TOKEN__">
+  <title>宠物对战 · Magpie</title>
+  <link rel="stylesheet" href="./arena.css">
+  <script defer src="./arena.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand"><span aria-hidden="true" class="brand-mark"></span>Magpie</div>
+      <span class="topbar-divider" aria-hidden="true"></span>
+      <span class="topbar-title">宠物对战</span>
+      <span class="connection" id="connection" data-state="connecting" role="status">正在连接</span>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <section id="loading" class="notice" aria-labelledby="loading-title">
+        <h1 id="loading-title">正在连接对战服务</h1>
+        <p id="loading-detail">连接成功后将自动显示大厅。</p>
+      </section>
+      <p id="error" class="notice error" role="alert" hidden></p>
+      <p id="service-error" class="notice error" role="status" hidden></p>
+      <p id="announcement" class="notice feedback" role="status" hidden></p>
+
+      <section id="lobby" hidden aria-labelledby="lobby-title">
+        <div class="hero">
+          <div class="hero-copy">
+            <h1 id="lobby-title" tabindex="-1">宠物对战</h1>
+            <p>带上你的伙伴，与好友来一场回合制对决。</p>
+          </div>
+          <div class="pet-card" id="pet-card">
+            <div class="portrait portrait-small" aria-hidden="true"><i></i></div>
+            <div class="pet-info">
+              <p class="pet-label">我的宠物</p>
+              <p class="pet-name" id="pet-name"></p>
+              <p class="pet-meta" id="pet-meta" hidden></p>
+            </div>
+          </div>
+        </div>
+        <p class="notice" id="pet-notice" hidden></p>
+        <div class="lobby-grid">
+          <section class="panel lan-panel" aria-labelledby="lan-title">
+            <div class="panel-heading">
+              <div>
+                <h2 id="lan-title">局域网对战</h2>
+                <p id="lan-description">查找同一局域网内的玩家并发起挑战。</p>
+              </div>
+              <button id="discover" class="button secondary" type="button" aria-describedby="lan-description">开启发现</button>
+            </div>
+            <section class="invites" id="invites-section" hidden aria-labelledby="invites-title">
+              <h3 id="invites-title">收到的挑战</h3>
+              <ul id="invites" class="players-list"></ul>
+            </section>
+            <p class="empty" id="lan-empty"></p>
+            <ul id="peers" class="players-list" aria-label="附近玩家"></ul>
+          </section>
+
+          <section class="panel code-panel" aria-labelledby="code-title">
+            <div class="panel-heading">
+              <div>
+                <h2 id="code-title">对战码</h2>
+                <p>创建房间分享对战码，或输入好友的对战码。</p>
+              </div>
+            </div>
+            <p class="notice" id="relay-notice" hidden>对战中继尚未配置。你仍可以使用局域网对战。</p>
+            <button type="button" class="button primary" id="create">创建房间</button>
+            <form id="join-form" class="join-form">
+              <label id="join-code-label" for="join-code">好友的对战码</label>
+              <div class="input-group">
+                <input id="join-code" name="code" aria-labelledby="join-code-label" placeholder="输入 8 位对战码" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+                <button type="button" class="button secondary" id="join">加入</button>
+              </div>
+            </form>
+          </section>
+        </div>
+        <button id="resume" type="button" class="button secondary resume">恢复上次对战</button>
+        <details class="rules" id="rules">
+          <summary>对战规则</summary>
+          <p>双方各有 3 点生命，每回合同时出招。出招克制对方，或仅对方超时，对方失去 1 点生命。双方出招相同，或同时超时，本回合平手。</p>
+          <ul><li>猛攻克制聚力</li><li>聚力克制防守</li><li>防守克制猛攻</li></ul>
+          <p>一方生命耗尽时，对方获胜。打满 9 回合后，生命较多的一方获胜，生命相同则平局。</p>
+        </details>
+      </section>
+
+      <section id="arena" hidden aria-labelledby="arena-title">
+        <header class="arena-heading">
+          <div>
+            <p class="mode" id="room-mode"></p>
+            <h1 id="arena-title" tabindex="-1">对战房间</h1>
+          </div>
+          <button class="button secondary" id="leave" type="button">返回大厅</button>
+        </header>
+        <div class="room-code panel" id="room-code" hidden>
+          <div><span>对战码</span> <strong id="room-code-text"></strong></div>
+          <button type="button" class="button secondary" id="copy-code">复制对战码</button>
+        </div>
+        <div class="board" aria-labelledby="battle-status">
+          <div class="fighter fighter-self" id="fighter-self">
+            <div class="portrait" aria-hidden="true"><i></i></div>
+            <p class="fighter-label">我方</p>
+            <p class="fighter-name"></p>
+            <p class="fighter-meta"></p>
+            <div class="health" role="img"><i></i><i></i><i></i></div>
+            <p class="fighter-state"></p>
+          </div>
+          <div class="board-center" role="status">
+            <h2 id="battle-status"></h2>
+            <p id="battle-detail"></p>
+            <p class="timer" id="timer" role="timer" aria-live="off" hidden></p>
+          </div>
+          <div class="fighter fighter-opponent" id="fighter-opponent">
+            <div class="portrait" aria-hidden="true"><i></i></div>
+            <p class="fighter-label">对手</p>
+            <p class="fighter-name"></p>
+            <p class="fighter-meta"></p>
+            <div class="health" role="img"><i></i><i></i><i></i></div>
+            <p class="fighter-state"></p>
+          </div>
+        </div>
+        <div id="ready-controls" class="ready-controls" hidden>
+          <button class="button primary" type="button" id="ready">准备</button>
+        </div>
+        <section id="round-controls" class="panel round-controls" hidden aria-labelledby="moves-title">
+          <h2 id="moves-title">选择招式</h2>
+          <div class="moves">
+            <button type="button" class="move" data-move="strike"><span class="move-icon" aria-hidden="true">↗</span><span><strong>猛攻</strong><small>克制聚力</small></span></button>
+            <button type="button" class="move" data-move="guard"><span class="move-icon" aria-hidden="true">◇</span><span><strong>防守</strong><small>克制猛攻</small></span></button>
+            <button type="button" class="move" data-move="focus"><span class="move-icon" aria-hidden="true">◎</span><span><strong>聚力</strong><small>克制防守</small></span></button>
+          </div>
+        </section>
+        <section class="panel history" id="history" aria-labelledby="history-title" hidden>
+          <h2 id="history-title">对战记录</h2>
+          <ol id="battle-log"></ol>
+        </section>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

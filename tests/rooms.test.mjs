@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createRooms } from '../lib/rooms.mjs';
+import { cleanPet, createRooms } from '../lib/rooms.mjs';
 
 const pet = { name: '星光', species: '1-1', stage: 1 };
 const points = { attack: 2, defense: 2, vitality: 2 };
+
+test('pet appearance and attribute survive validation while unsafe values are dropped', () => {
+  const clean = cleanPet({ ...pet, sprite: 'Chaosdramon', attribute: 'virus' });
+  assert.equal(clean.sprite, 'Chaosdramon');
+  assert.equal(clean.attribute, 'virus');
+  const unsafe = cleanPet({ ...pet, sprite: '../etc/passwd', attribute: 'fire' });
+  assert.equal(unsafe.sprite, undefined);
+  assert.equal(unsafe.attribute, undefined);
+});
 
 function pair(rooms) {
   const { key: host, room: { code } } = rooms('create', { pet });

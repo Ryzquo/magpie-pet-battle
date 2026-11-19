@@ -101,6 +101,17 @@ main:focus { outline: none; }
 .portrait-small { --portrait-size: 35px; }
 .fighter-opponent .portrait { --pet-top: #f0c4d7; --pet-bottom: #cf89ab; color: #47203a; }
 [data-empty="true"] .portrait { opacity: .42; filter: saturate(0); }
+.portrait img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.portrait[data-sprite="true"] { background: transparent; box-shadow: none; }
+.portrait[data-sprite="true"]::before,
+.portrait[data-sprite="true"]::after,
+.portrait[data-sprite="true"] i { display: none; }
+
+.attribute-badge { display: inline-block; margin-top: 3px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); color: var(--muted); font-size: .7rem; line-height: 1.7; }
+.attribute-badge[data-attribute="vaccine"] { color: var(--accent); border-color: var(--accent); }
+.attribute-badge[data-attribute="virus"] { color: var(--danger); border-color: var(--danger); }
+.attribute-badge[data-attribute="data"] { color: var(--good); border-color: var(--good); }
+.care-stats { margin: -8px 0 14px; color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
 
 .lobby-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 14px; align-items: start; }
 .panel, .notice, .rules { border: 1px solid var(--line); border-radius: var(--radius); }
@@ -115,6 +126,9 @@ main:focus { outline: none; }
 .players-list { list-style: none; padding: 0; margin: 0; }
 .players-list li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-top: 10px; margin-top: 10px; border-top: 1px solid var(--line); }
 .players-list strong { font-size: .92rem; }
+.player-info { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 8px; }
+.player-text { min-width: 0; }
+.mini-sprite { grid-row: span 2; width: 32px; height: 29px; object-fit: contain; image-rendering: pixelated; }
 .player-info p { color: var(--muted); font-size: .8rem; }
 .player-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .code-panel > :is(.notice, .button), .join-form { margin-top: 12px; }
@@ -147,6 +161,11 @@ input:disabled { opacity: .75; }
 .fighter-name { font-weight: 750; }
 .fighter-vitals { margin-block: 7px 4px; font-size: .8rem; font-variant-numeric: tabular-nums; }
 .fighter-effects { margin-top: 3px; font-size: .78rem; color: var(--board-ink); }
+.fighter-attribute { margin-top: 2px; }
+.board .attribute-badge { background: transparent; border-color: var(--board-muted); color: var(--board-muted); }
+.board .attribute-badge[data-attribute="vaccine"] { color: #a6b8ff; border-color: #a6b8ff; }
+.board .attribute-badge[data-attribute="virus"] { color: #ffb5bf; border-color: #ffb5bf; }
+.board .attribute-badge[data-attribute="data"] { color: #8cd9b3; border-color: #8cd9b3; }
 .health { --fill: #c7d3ff; display: block; width: min(100%, 110px); height: 8px; margin: 3px auto; }
 .fighter-opponent .health { --fill: #f2c3da; }
 .health::-webkit-meter-bar { background: #646f8a; border: 0; border-radius: 99px; }

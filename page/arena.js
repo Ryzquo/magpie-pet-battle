@@ -5,6 +5,9 @@ const token = document.querySelector('meta[name="arena-token"]').content;
 const ATTRIBUTES = { attack: "攻击", defense: "防御", vitality: "体力" };
 const SKILLS = ["attack", "break", "shield", "counter", "charge", "heavy", "heal"];
 const EQUIPPED_COUNT = 2;
+const ATTRIBUTE_LABELS = { vaccine: "疫苗", virus: "病毒", data: "数据" };
+const SPRITE_MODES = { idle: [0, 1], attack: [6, 7], happy: [2, 0], hurt: [13, 0], sleep: [11, 12] };
+const SPRITE_VERSION = 1;
 const pointInputs = [...byId("point-fields").querySelectorAll("input")];
 const POLL_INTERVAL = 1000;
 const REQUEST_TIMEOUT = 5000;
@@ -21,6 +24,10 @@ let checkResult = null;
 let reloading = false;
 let selection = null;
 let savedLoadout = null;
+const spriteAnimations = new Map();
+const spriteFailures = new Set();
+let attackUntil = { self: 0, opponent: 0 };
+let lastRoomState = null;
 
 function setText(element, text) {
   if (element.textContent !== text) element.textContent = text;
@@ -48,6 +55,66 @@ function petDetails(pet) {
   return [pet?.species, pet?.stage != null ? `阶段 ${pet.stage}` : ""].filter(Boolean).join(" · ");
 }
 
+function attributeLabel(attribute) {
+  return ATTRIBUTE_LABELS[attribute] || "";
+}
+
+function spriteUrl(sprite, frame) {
+  return `/sprite/${encodeURIComponent(sprite)}/${frame}.png?v=${SPRITE_VERSION}`;
+}
+
+function animateSprite(img, sprite, mode, key) {
+  if (!img) return;
+  if (!sprite || spriteFailures.has(sprite)) {
+    img.hidden = true;
+    const portrait = img.closest(".portrait");
+    if (portrait) portrait.dataset.sprite = "false";
+    const state = spriteAnimations.get(key);
+    if (state) {
+      clearInterval(state.timer);
+      spriteAnimations.delete(key);
+    }
+    return;
+  }
+  const frames = SPRITE_MODES[mode] || SPRITE_MODES.idle;
+  const state = spriteAnimations.get(key);
+  if (state?.sprite === sprite && state.mode === mode) return;
+  if (state) clearInterval(state.timer);
+  let index = 0;
+  const paint = () => {
+    img.hidden = false;
+    img.src = spriteUrl(sprite, frames[index % frames.length]);
+    index += 1;
+  };
+  img.onerror = () => {
+    spriteFailures.add(sprite);
+    img.hidden = true;
+    const portrait = img.closest(".portrait");
+    if (portrait) portrait.dataset.sprite = "false";
+    const current = spriteAnimations.get(key);
+    if (current) {
+      clearInterval(current.timer);
+      spriteAnimations.delete(key);
+    }
+  };
+  paint();
+  spriteAnimations.set(key, { sprite, mode, timer: setInterval(paint, 400) });
+}
+
+function setAttributeBadge(element, attribute) {
+  if (!element) return;
+  const label = attributeLabel(attribute);
+  setText(element, label);
+  element.hidden = !label;
+  if (label) element.dataset.attribute = attribute;
+  else delete element.dataset.attribute;
+}
+
+function careText(care) {
+  if (!care) return "";
+  return `饱食 ${care.satiety} · 心情 ${care.mood} · 精力 ${care.energy} · 清洁 ${care.hygiene} · 亲密 ${care.bond}`;
+}
+
 function disableAction(button, disabled) {
   if (disabled || connection === "offline") button.setAttribute("aria-disabled", "true");
   else button.removeAttribute("aria-disabled");
@@ -71,7 +138,12 @@ function renderPlayers(id, players, actions, petAvailable) {
       row = element("li");
       row.dataset.id = key;
       const info = element("div", "player-info");
-      info.append(element("strong"), element("p"));
+      const mini = element("img", "mini-sprite");
+      mini.alt = "";
+      mini.hidden = true;
+      const text = element("div", "player-text");
+      text.append(element("strong"), element("p"));
+      info.append(mini, text);
       const controls = element("div", "player-actions");
       for (const [action, label, payloadKey, petRequired] of actions) {
         const button = element("button", "button secondary", label);
@@ -91,10 +163,20 @@ function renderPlayers(id, players, actions, petAvailable) {
     const name = player.name || "附近玩家";
     const petName = typeof player.pet === "string" ? player.pet : player.pet?.name;
     const detail = petName && petName !== name ? petName : petDetails(player.pet);
+    const pet = player.pet && typeof player.pet === "object" ? player.pet : null;
     setText(row.querySelector("strong"), name);
-    const description = row.querySelector(".player-info p");
-    setText(description, detail);
-    description.hidden = !detail;
+    const description = row.querySelector(".player-text p");
+    setText(description, [detail, attributeLabel(pet?.attribute)].filter(Boolean).join(" · "));
+    description.hidden = !description.textContent;
+    const mini = row.querySelector(".mini-sprite");
+    if (pet?.sprite) {
+      mini.hidden = false;
+      mini.src = spriteUrl(pet.sprite, 0);
+      mini.alt = `${name} 的形象`;
+    } else {
+      mini.hidden = true;
+      mini.removeAttribute("src");
+    }
     for (const button of row.querySelectorAll("button")) {
       button.setAttribute("aria-label", `${button.textContent}（${name}）`);
       disableAction(button, pending || (button.hasAttribute("data-pet-required") && !petAvailable));
@@ -109,6 +191,11 @@ function renderLobby() {
   byId("pet-card").dataset.empty = String(!pet);
   setText(byId("pet-name"), pet?.name || "暂无宠物");
   message("pet-meta", petDetails(pet));
+  const portrait = byId("pet-card").querySelector(".portrait");
+  portrait.dataset.sprite = String(Boolean(pet?.sprite));
+  animateSprite(byId("pet-sprite"), pet?.sprite, "idle", "lobby");
+  setAttributeBadge(byId("pet-attribute"), pet?.attribute);
+  message("care-stats", pet?.care ? careText(pet.care) : "");
   message("pet-notice", !pet || petError
     ? [petError, !pet ? "请先在 Magpie 选择宠物，再发起或加入对战。" : ""].filter(Boolean).join(" ")
     : "");
@@ -154,7 +241,7 @@ function skillDetails(skill) {
   return `消耗 ${skill.cost} 能量 · 冷却 ${skill.cooldown} 回合`;
 }
 
-function renderFighter(id, fighter, phase, rules) {
+function renderFighter(id, fighter, phase, rules, mode) {
   const card = byId(id);
   card.dataset.empty = String(!fighter);
   setText(card.querySelector(".fighter-name"), fighter?.pet?.name || "等待加入");
@@ -162,6 +249,11 @@ function renderFighter(id, fighter, phase, rules) {
   const details = petDetails(fighter?.pet);
   setText(meta, details);
   meta.hidden = !details;
+  const portrait = card.querySelector(".portrait");
+  const sprite = fighter?.pet?.sprite;
+  portrait.dataset.sprite = String(Boolean(sprite));
+  animateSprite(card.querySelector(".fighter-sprite"), sprite, mode || "idle", id);
+  setAttributeBadge(card.querySelector(".fighter-attribute"), fighter?.pet?.attribute);
 
   const vitals = card.querySelector(".fighter-vitals");
   vitals.hidden = !fighter || !Number.isFinite(fighter.maxHp) || fighter.maxHp <= 0;
@@ -342,6 +434,21 @@ function renderRoundControls(room, self, rules) {
   });
 }
 
+function fighterMode(fighter, room, side, now) {
+  if (!fighter) return "sleep";
+  if (room.phase === "finished") {
+    if (room.winner === "draw") return "idle";
+    const winner = room.winner === room.you ? "self" : "opponent";
+    return winner === side ? "happy" : "hurt";
+  }
+  if (room.phase === "playing") {
+    if (attackUntil[side] > now || fighter.locked) return "attack";
+    if (fighter.hp > 0 && fighter.hp <= fighter.maxHp * 0.3) return "hurt";
+    return "idle";
+  }
+  return "idle";
+}
+
 function renderArena() {
   const { room, mode } = status;
   const self = room.players[room.you];
@@ -353,8 +460,26 @@ function renderArena() {
   disableAction(byId("leave"), pending);
   const rules = supportsRules(room.rules) ? room.rules : null;
   message("rules-notice", rules ? "" : "此房间的对战规则与当前版本不兼容。请退出房间，确认双方和中继的版本后重试。");
-  renderFighter("fighter-self", self, room.phase, rules);
-  renderFighter("fighter-opponent", opponent, room.phase, rules);
+  const now = Date.now();
+  const previous = lastRoomState;
+  if (!previous || previous.code !== room.code) {
+    lastRoomState = { code: room.code, round: room.round,
+      selfLocked: Boolean(self?.locked), opponentLocked: Boolean(opponent?.locked) };
+    attackUntil = { self: 0, opponent: 0 };
+  } else {
+    if (room.phase === "playing" && previous.round !== room.round) {
+      attackUntil.self = now + 1200;
+      attackUntil.opponent = now + 1200;
+    }
+    if (self?.locked && !previous.selfLocked) attackUntil.self = now + 1200;
+    if (opponent?.locked && !previous.opponentLocked) attackUntil.opponent = now + 1200;
+    lastRoomState = { code: room.code, round: room.round,
+      selfLocked: Boolean(self?.locked), opponentLocked: Boolean(opponent?.locked) };
+  }
+  const selfMode = fighterMode(self, room, "self", now);
+  const opponentMode = fighterMode(opponent, room, "opponent", now);
+  renderFighter("fighter-self", self, room.phase, rules, selfMode);
+  renderFighter("fighter-opponent", opponent, room.phase, rules, opponentMode);
   byId("room-loadouts").hidden = !rules;
   if (rules) {
     renderLoadout("loadout-self", self, rules, room.phase);

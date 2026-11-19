@@ -35,14 +35,16 @@
             <p>带上你的伙伴，与好友来一场回合制对决。</p>
           </div>
           <div class="pet-card" id="pet-card">
-            <div class="portrait portrait-small" aria-hidden="true"><i></i></div>
+            <div class="portrait portrait-small" aria-hidden="true"><i></i><img class="pet-sprite" id="pet-sprite" alt="" hidden></div>
             <div class="pet-info">
               <p class="pet-label">我的宠物</p>
               <p class="pet-name" id="pet-name"></p>
               <p class="pet-meta" id="pet-meta" hidden></p>
+              <span class="attribute-badge" id="pet-attribute" hidden></span>
             </div>
           </div>
         </div>
+        <p class="care-stats" id="care-stats" hidden></p>
         <p class="notice" id="pet-notice" hidden></p>
         <div class="lobby-grid">
           <section class="panel lan-panel" aria-labelledby="lan-title">
@@ -106,10 +108,11 @@
         </div>
         <div class="board" aria-labelledby="battle-status">
           <div class="fighter fighter-self" id="fighter-self">
-            <div class="portrait" aria-hidden="true"><i></i></div>
+            <div class="portrait" aria-hidden="true"><i></i><img class="fighter-sprite" alt="" hidden></div>
             <p class="fighter-label">我方</p>
             <p class="fighter-name"></p>
             <p class="fighter-meta"></p>
+            <span class="attribute-badge fighter-attribute" hidden></span>
             <div class="fighter-vitals" hidden>
               <p class="health-label"></p>
               <meter class="health" aria-label="生命值" min="0" max="1" value="0"></meter>
@@ -124,10 +127,11 @@
             <p class="timer" id="timer" role="timer" aria-live="off" hidden></p>
           </div>
           <div class="fighter fighter-opponent" id="fighter-opponent">
-            <div class="portrait" aria-hidden="true"><i></i></div>
+            <div class="portrait" aria-hidden="true"><i></i><img class="fighter-sprite" alt="" hidden></div>
             <p class="fighter-label">对手</p>
             <p class="fighter-name"></p>
             <p class="fighter-meta"></p>
+            <span class="attribute-badge fighter-attribute" hidden></span>
             <div class="fighter-vitals" hidden>
               <p class="health-label"></p>
               <meter class="health" aria-label="生命值" min="0" max="1" value="0"></meter>

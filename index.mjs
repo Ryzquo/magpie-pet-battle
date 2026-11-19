@@ -1,5 +1,5 @@
 import { startLocal } from './lib/local.mjs';
-import { createPetReader } from './lib/pet.mjs';
+import { createPetReader, spriteRootFor } from './lib/pet.mjs';
 
 let starting;
 
@@ -9,7 +9,8 @@ export default {
     starting ??= (async () => {
       const opts = options || {};
       const getPet = await createPetReader({ petDbPath: opts.petDbPath, configDir: input?.directory });
-      const service = await startLocal({ getPet, relayUrl: opts.relayUrl });
+      const service = await startLocal({ getPet, relayUrl: opts.relayUrl,
+        spriteRoot: spriteRootFor({ configDir: input?.directory }) });
       console.info(`[magpie-pet-battle] sidebar page at http://127.0.0.1:${service.port}/`);
     })().catch((error) => {
       console.error('[magpie-pet-battle] 页面服务启动失败:', error.message);

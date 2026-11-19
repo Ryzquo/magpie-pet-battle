@@ -7,7 +7,8 @@ const SKILLS = ["attack", "break", "shield", "counter", "charge", "heavy", "heal
 const EQUIPPED_COUNT = 2;
 const pointInputs = [...byId("point-fields").querySelectorAll("input")];
 const POLL_INTERVAL = 1000;
-const REQUEST_TIMEOUT = 8000;
+const REQUEST_TIMEOUT = 5000;
+const ACTION_RETRY_DELAY = 350;
 
 let status = null;
 let pending = false;
@@ -15,6 +16,9 @@ let version = 0;
 let actionError = "";
 let pollError = "";
 let connection = "connecting";
+let failedPolls = 0;
+let checkResult = null;
+let reloading = false;
 let selection = null;
 let savedLoadout = null;
 
@@ -45,7 +49,7 @@ function petDetails(pet) {
 }
 
 function disableAction(button, disabled) {
-  if (disabled) button.setAttribute("aria-disabled", "true");
+  if (disabled || connection === "offline") button.setAttribute("aria-disabled", "true");
   else button.removeAttribute("aria-disabled");
 }
 
@@ -414,12 +418,14 @@ async function request(path, data) {
     if (response.status === 401) {
       const url = new URL(location.href);
       const now = Date.now();
-      if (now - Number(url.searchParams.get("reconnect")) >= REQUEST_TIMEOUT) {
+      if (!reloading && now - Number(url.searchParams.get("reconnect")) >= REQUEST_TIMEOUT) {
+        reloading = true;
         url.searchParams.set("reconnect", String(now));
         location.replace(url.href);
       }
+      throw new ArenaRequestError("页面会话已失效，正在重新连接。");
     }
-    const body = await response.json().catch(() => null);
+    const body = await response.json();
     if (!response.ok || !body?.lan) throw new ArenaRequestError(body?.error || "对战服务暂时不可用。");
     return body;
   } finally {
@@ -427,17 +433,27 @@ async function request(path, data) {
   }
 }
 
+function receiveStatus(next) {
+  failedPolls = 0;
+  pollError = "";
+  setConnection("online");
+  applyStatus(next);
+  if (checkResult) {
+    const confirmed = checkResult.action === "discover" && next.lan.discoverable === checkResult.enabled;
+    checkResult = null;
+    if (!confirmed && !next.error) announce("连接已恢复，请确认刚才的操作是否生效。");
+  }
+}
+
 async function poll() {
   const requestVersion = version;
-  const startedDuringAction = pending;
   try {
+    if (pending || reloading) return;
     const next = await request("/api/status");
-    if (requestVersion !== version || startedDuringAction) return;
-    pollError = "";
-    setConnection("online");
-    applyStatus(next);
+    if (requestVersion !== version) return;
+    receiveStatus(next);
   } catch (error) {
-    if (requestVersion !== version || startedDuringAction) return;
+    if (requestVersion !== version || reloading || ++failedPolls < 2) return;
     pollError = error instanceof ArenaRequestError ? error.message : "";
     setConnection("offline");
     render();
@@ -446,25 +462,42 @@ async function poll() {
   }
 }
 
+async function requestAction(data) {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  const requestId = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const payload = { ...data, requestId };
+  const retryUntil = Date.now() + 10_000;
+  try {
+    return await request("/api/action", payload);
+  } catch (error) {
+    if (error instanceof ArenaRequestError) throw error;
+    await new Promise((resolve) => setTimeout(resolve, ACTION_RETRY_DELAY));
+    if (Date.now() >= retryUntil) throw error;
+    return request("/api/action", payload);
+  }
+}
+
 async function runAction(action, fields) {
-  if (pending || !status) return;
+  if (pending || !status || connection === "offline" || reloading) return;
   pending = true;
   version += 1;
   actionError = "";
   announce("");
   render();
   try {
-    const next = await request("/api/action", { action, ...fields });
-    pollError = "";
-    setConnection("online");
+    const next = await requestAction({ action, ...fields });
     if (action === "move") selection = { move: fields.move };
-    applyStatus(next);
+    receiveStatus(next);
     if (action === "join") byId("join-code").value = "";
     if (action === "resume" && !next.room && !next.error) announce("没有可恢复的对战。");
     if (action === "loadout" && !next.error) announce("已保存配置。");
   } catch (error) {
-    actionError = error instanceof ArenaRequestError ? error.message : "未收到操作结果。请查看当前状态后再试。";
-    if (!(error instanceof ArenaRequestError)) setConnection("offline");
+    if (error instanceof ArenaRequestError) {
+      if (!reloading) actionError = error.message;
+    } else {
+      checkResult = { action, ...fields };
+      setConnection("offline");
+    }
   } finally {
     pending = false;
     render();

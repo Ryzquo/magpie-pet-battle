@@ -105,6 +105,7 @@ function renderPlayers(id, players, actions, petAvailable) {
 
 function renderLobby() {
   const { pet, petError, lan, relayConfigured } = status;
+  const online = relayConfigured;
   byId("pet-card").dataset.empty = String(!pet);
   setText(byId("pet-name"), pet?.name || "暂无宠物");
   message("pet-meta", petDetails(pet));
@@ -112,12 +113,16 @@ function renderLobby() {
     ? [petError, !pet ? "请先在 Magpie 选择宠物，再发起或加入对战。" : ""].filter(Boolean).join(" ")
     : "");
 
+  setText(byId("lan-title"), online ? "在线对战" : "局域网对战");
+  setText(byId("lan-description"), online
+    ? "查找同一对战服务上的玩家并发起挑战。"
+    : "查找同一局域网内的玩家并发起挑战。");
   const discover = byId("discover");
-  setText(discover, lan.discoverable ? "停止发现" : "开启发现");
+  setText(discover, lan.discoverable ? (online ? "停止在线发现" : "停止发现") : (online ? "开启在线发现" : "开启发现"));
   disableAction(discover, pending);
   message("lan-empty", lan.peers.length ? "" : lan.discoverable
-    ? "正在扫描附近玩家。请好友在同一网络开启发现。"
-    : "开启发现后，即可查找附近玩家。");
+    ? (online ? "正在扫描在线玩家。请好友开启在线发现。" : "正在扫描附近玩家。请好友在同一网络开启发现。")
+    : (online ? "开启在线发现后，即可查找在线玩家。" : "开启发现后，即可查找附近玩家。"));
   byId("outgoing-challenge").hidden = !lan.challengePending;
   disableAction(byId("cancel-challenge"), pending);
   byId("invites-section").hidden = !lan.invites.length;
@@ -341,7 +346,7 @@ function renderArena() {
   const { room, mode } = status;
   const self = room.players[room.you];
   const opponent = room.players[1 - room.you];
-  setText(byId("room-mode"), mode === "lan" ? "局域网对战" : "对战码房间");
+  setText(byId("room-mode"), { lan: "局域网对战", online: "在线对战", code: "对战码房间" }[mode] || "对战房间");
   byId("room-code").hidden = mode !== "code" || room.phase !== "waiting" || !room.code;
   setText(byId("room-code-text"), room.code || "");
   setText(byId("leave"), room.phase === "playing" ? "退出对战" : "返回大厅");

@@ -260,6 +260,14 @@ async function request(path, data) {
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
   try {
     const response = await fetch(path, options);
+    if (response.status === 401) {
+      const url = new URL(location.href);
+      const now = Date.now();
+      if (now - Number(url.searchParams.get("reconnect")) >= REQUEST_TIMEOUT) {
+        url.searchParams.set("reconnect", String(now));
+        location.replace(url.href);
+      }
+    }
     const body = await response.json().catch(() => null);
     if (!response.ok || !body?.lan) throw new ArenaRequestError(body?.error || "对战服务暂时不可用。");
     return body;

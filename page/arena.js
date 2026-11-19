@@ -114,8 +114,10 @@ function renderLobby() {
   message("lan-empty", lan.peers.length ? "" : lan.discoverable
     ? "正在扫描附近玩家。请好友在同一网络开启发现。"
     : "开启发现后，即可查找附近玩家。");
+  byId("outgoing-challenge").hidden = !lan.challengePending;
+  disableAction(byId("cancel-challenge"), pending);
   byId("invites-section").hidden = !lan.invites.length;
-  renderPlayers("peers", lan.peers, [["challenge", "挑战", "peerId", true]], !!pet);
+  renderPlayers("peers", lan.peers, [["challenge", "挑战", "peerId", true]], !!pet && !lan.challengePending);
   renderPlayers("invites", lan.invites, [
     ["accept", "接受", "inviteId", true],
     ["decline", "拒绝", "inviteId", false],
@@ -124,9 +126,9 @@ function renderLobby() {
   byId("relay-notice").hidden = relayConfigured;
   const codeAvailable = !!pet && relayConfigured;
   byId("join-code").disabled = !codeAvailable;
-  byId("join-code").readOnly = pending;
-  disableAction(byId("create"), !codeAvailable || pending);
-  disableAction(byId("join"), !codeAvailable || pending);
+  byId("join-code").readOnly = pending || lan.challengePending;
+  disableAction(byId("create"), !codeAvailable || pending || lan.challengePending);
+  disableAction(byId("join"), !codeAvailable || pending || lan.challengePending);
   disableAction(byId("resume"), pending);
 }
 
@@ -459,7 +461,6 @@ async function runAction(action, fields) {
     applyStatus(next);
     if (action === "join") byId("join-code").value = "";
     if (action === "resume" && !next.room && !next.error) announce("没有可恢复的对战。");
-    if (action === "challenge" && !next.room && !next.error) announce("已发送挑战，等待好友接受。");
     if (action === "loadout" && !next.error) announce("已保存配置。");
   } catch (error) {
     actionError = error instanceof ArenaRequestError ? error.message : "未收到操作结果。请查看当前状态后再试。";
@@ -478,6 +479,7 @@ function onAction(id, action, fields = () => undefined) {
 }
 
 onAction("discover", "discover", () => ({ enabled: !status.lan.discoverable }));
+onAction("cancel-challenge", "cancel-challenge");
 onAction("create", "create");
 onAction("resume", "resume");
 onAction("leave", "leave");

@@ -1,5 +1,6 @@
 import { startLocal } from './lib/local.mjs';
-import { createPetReader } from './lib/pet.mjs';
+import { createPetReader, loadPetCatalog } from './lib/pet.mjs';
+import { createPetFrames } from './lib/pet-frames.mjs';
 
 let starting;
 
@@ -8,8 +9,12 @@ export default {
   async server(input, options = {}) {
     starting ??= (async () => {
       const opts = options || {};
-      const getPet = await createPetReader({ petDbPath: opts.petDbPath, configDir: input?.directory });
-      const service = await startLocal({ getPet, relayUrl: opts.relayUrl });
+      const catalog = await loadPetCatalog(input?.directory);
+      const [getPet, petFrames] = await Promise.all([
+        createPetReader({ petDbPath: opts.petDbPath, catalog }),
+        createPetFrames(catalog),
+      ]);
+      const service = await startLocal({ getPet, petFrames, relayUrl: opts.relayUrl });
       console.info(`[magpie-pet-battle] sidebar page at http://127.0.0.1:${service.port}/`);
     })().catch((error) => {
       console.error('[magpie-pet-battle] 页面服务启动失败:', error.message);

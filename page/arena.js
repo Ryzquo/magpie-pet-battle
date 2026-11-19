@@ -1,7 +1,8 @@
-"use strict";
+import { createStage } from "./stage.js";
 
 const byId = (id) => document.getElementById(id);
 const token = document.querySelector('meta[name="arena-token"]').content;
+const stage = createStage(document.querySelector(".board"), token);
 const ATTRIBUTES = { attack: "攻击", defense: "防御", vitality: "体力" };
 const SKILLS = ["attack", "break", "shield", "counter", "charge", "heavy", "heal"];
 const EQUIPPED_COUNT = 2;
@@ -44,8 +45,10 @@ function setConnection(next) {
   setText(element, labels[next]);
 }
 
-function petDetails(pet) {
-  return [pet?.species, pet?.stage != null ? `阶段 ${pet.stage}` : ""].filter(Boolean).join(" · ");
+function petDetails(pet, showStats = false) {
+  const stats = pet?.combatStats;
+  return [pet?.species, pet?.stage != null ? `阶段 ${pet.stage}` : "",
+    showStats && stats ? `图鉴力量 ${stats.strength} / 闪避 ${stats.evasion}` : ""].filter(Boolean).join(" · ");
 }
 
 function disableAction(button, disabled) {
@@ -108,7 +111,7 @@ function renderLobby() {
   const { pet, petError, lobby, relayConfigured } = status;
   byId("pet-card").dataset.empty = String(!pet);
   setText(byId("pet-name"), pet?.name || "暂无宠物");
-  message("pet-meta", petDetails(pet));
+  message("pet-meta", petDetails(pet, true));
   message("pet-notice", !pet || petError
     ? [petError, !pet ? "请先在 Magpie 选择宠物，再发起或加入对战。" : ""].filter(Boolean).join(" ")
     : "");
@@ -154,7 +157,7 @@ function renderFighter(id, fighter, phase, rules) {
   card.dataset.empty = String(!fighter);
   setText(card.querySelector(".fighter-name"), fighter?.pet?.name || "等待加入");
   const meta = card.querySelector(".fighter-meta");
-  const details = petDetails(fighter?.pet);
+  const details = petDetails(fighter?.pet, true);
   setText(meta, details);
   meta.hidden = !details;
 
@@ -162,9 +165,10 @@ function renderFighter(id, fighter, phase, rules) {
   vitals.hidden = !fighter || !Number.isFinite(fighter.maxHp) || fighter.maxHp <= 0;
   if (!vitals.hidden) {
     const health = card.querySelector(".health");
+    const hp = stage.visualHp(id === "fighter-self" ? "self" : "opponent", fighter.hp);
     health.max = fighter.maxHp;
-    health.value = fighter.hp;
-    setText(card.querySelector(".health-label"), `生命 ${fighter.hp} / ${fighter.maxHp}`);
+    health.value = hp;
+    setText(card.querySelector(".health-label"), `生命 ${hp} / ${fighter.maxHp}`);
     const energy = card.querySelector(".energy");
     energy.hidden = !rules;
     if (rules) setText(energy, `能量 ${fighter.energy} / ${rules.maxEnergy}`);
@@ -347,6 +351,7 @@ function renderArena() {
   setText(byId("leave"), room.phase === "playing" ? "退出对战" : "返回大厅");
   disableAction(byId("leave"), pending);
   const rules = supportsRules(room.rules) ? room.rules : null;
+  stage.update(room, rules, connection === "online");
   message("rules-notice", rules ? "" : "此房间的对战规则与当前版本不兼容。请退出房间，确认双方和中继的版本后重试。");
   renderFighter("fighter-self", self, room.phase, rules);
   renderFighter("fighter-opponent", opponent, room.phase, rules);
@@ -378,6 +383,7 @@ function render() {
   } else if (status.room) {
     renderArena();
   } else {
+    stage.update(null);
     renderLobby();
   }
 }

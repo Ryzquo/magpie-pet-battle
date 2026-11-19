@@ -182,6 +182,8 @@ input:disabled { opacity: .75; }
 .move[data-selected] .move-state { color: var(--accent); }
 .history ol { padding-inline-start: 1.3rem; margin-block: 8px 0; color: var(--muted); font-size: .88rem; }
 .history li + li { margin-top: 4px; }
+.stage-credit { color: var(--muted); font-size: .75rem; text-align: center; }
+.stage-credit a { color: inherit; }
 
 @media (max-width: 610px) {
   .lobby-grid { grid-template-columns: 1fr; }

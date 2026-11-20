@@ -14,7 +14,7 @@ export default {
         createPetReader({ petDbPath: opts.petDbPath, catalog }),
         createPetFrames(catalog),
       ]);
-      const service = await startLocal({ getPet, petFrames, relayUrl: opts.relayUrl });
+      const service = await startLocal({ getPet, petFrames, relayUrl: opts.relayUrl, configDir: input?.directory });
       console.info(`[magpie-pet-battle] sidebar page at http://127.0.0.1:${service.port}/`);
     })().catch((error) => {
       console.error('[magpie-pet-battle] 页面服务启动失败:', error.message);

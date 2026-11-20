@@ -8,6 +8,8 @@
   <title>宠物对战 · Magpie</title>
   <link rel="stylesheet" href="./arena.css">
   <link rel="stylesheet" href="./stage.css">
+  <link rel="stylesheet" href="./adventure.css">
+  <link rel="stylesheet" href="./cards.css">
   <script type="module" crossorigin="anonymous" src="./arena.js"></script>
 </head>
 <body>
@@ -33,7 +35,7 @@
         <div class="hero">
           <div class="hero-copy">
             <h1 id="lobby-title" tabindex="-1">宠物对战</h1>
-            <p>带上你的伙伴，与好友来一场回合制对决。</p>
+            <p>和伙伴踏上无尽冒险，或与好友进行回合制对决。</p>
           </div>
           <div class="pet-card" id="pet-card">
             <div class="portrait portrait-small" aria-hidden="true"><i></i><img class="pet-sprite" id="pet-sprite" alt="" hidden></div>
@@ -47,6 +49,25 @@
         </div>
         <p class="care-stats" id="care-stats" hidden></p>
         <p class="notice" id="pet-notice" hidden></p>
+        <section id="adventure-lobby" class="panel adventure-lobby" aria-labelledby="adventure-lobby-title" hidden>
+          <div class="panel-heading">
+            <div>
+              <h2 id="adventure-lobby-title">无尽冒险</h2>
+              <p id="adventure-lobby-detail"></p>
+            </div>
+            <button id="adventure-open" class="button primary" type="button"></button>
+          </div>
+          <p class="form-summary" id="adventure-best"></p>
+          <p class="form-summary" id="adventure-lobby-blocked" role="status" hidden></p>
+          <details id="adventure-cosmetics" class="adventure-cosmetics">
+            <summary>对战装扮</summary>
+            <p class="form-summary" id="adventure-cosmetics-detail"></p>
+            <div class="adventure-equipment" id="adventure-equipment">
+              <label>称号 <select id="adventure-title-select"></select></label>
+              <label>入场特效 <select id="adventure-effect-select"></select></label>
+            </div>
+          </details>
+        </section>
         <div class="lobby-grid">
           <section class="panel" aria-labelledby="online-title">
             <div class="panel-heading">
@@ -96,6 +117,103 @@
         </details>
       </section>
 
+      <section id="adventure" class="adventure" hidden aria-labelledby="adventure-title">
+        <header class="arena-heading">
+          <div>
+            <p class="mode" id="adventure-progress"></p>
+            <h1 id="adventure-title" tabindex="-1">无尽冒险</h1>
+          </div>
+          <button id="adventure-back" class="button secondary" type="button">返回大厅</button>
+        </header>
+        <form class="panel loadout-form adventure-prep" id="adventure-prep" aria-labelledby="adventure-prep-title" hidden>
+          <h2 id="adventure-prep-title">选择两项通用技能</h2>
+          <p class="form-summary" id="adventure-evolution-detail"></p>
+          <p class="form-summary">冒险进度会自动保存。</p>
+          <fieldset id="adventure-point-fields" aria-describedby="adventure-point-summary">
+            <legend>分配属性点</legend>
+            <div class="point-fields">
+              <label>攻击<input type="number" name="attack" min="0" step="1" value="2" required></label>
+              <label>防御<input type="number" name="defense" min="0" step="1" value="2" required></label>
+              <label>耐力<input type="number" name="vitality" min="0" step="1" value="2" required></label>
+            </div>
+            <p id="adventure-point-summary" class="form-summary" role="status"></p>
+          </fieldset>
+          <div id="adventure-skill-fields" class="skill-fields" role="group" aria-labelledby="adventure-prep-title"></div>
+          <p id="adventure-skill-count" class="form-summary" role="status"></p>
+          <button id="adventure-start" class="button primary" type="submit">开始冒险</button>
+        </form>
+        <div class="board adventure-board" id="adventure-board" aria-labelledby="adventure-intent" hidden>
+          <canvas id="adventure-scenery" aria-hidden="true"></canvas>
+          <p id="adventure-scene-label"></p>
+          <article class="fighter fighter-self">
+            <div class="portrait" aria-hidden="true"></div>
+            <p class="fighter-label">我方</p>
+            <p class="fighter-name" id="adventure-self-name"></p>
+            <p class="fighter-meta" id="adventure-self-meta" hidden></p>
+            <span class="attribute-badge fighter-attribute" hidden></span>
+            <div class="fighter-vitals">
+              <p class="health-label" id="adventure-self-hp"></p>
+              <meter class="health" id="adventure-self-health" min="0" max="1" aria-label="我方生命值"></meter>
+              <p class="energy" id="adventure-self-energy"></p>
+            </div>
+            <p class="fighter-effects" id="adventure-self-effects" hidden></p>
+          </article>
+          <div class="board-center" role="status">
+            <h2 id="adventure-intent">当前遭遇</h2>
+            <p id="adventure-intent-detail"></p>
+          </div>
+          <article class="fighter fighter-opponent">
+            <div class="portrait" aria-hidden="true"></div>
+            <p class="fighter-label">对手</p>
+            <p class="fighter-name" id="adventure-enemy-name"></p>
+            <p class="fighter-meta" id="adventure-enemy-meta" hidden></p>
+            <div class="fighter-vitals">
+              <p class="health-label" id="adventure-enemy-hp"></p>
+              <meter class="health" id="adventure-enemy-health" min="0" max="1" aria-label="对手生命值"></meter>
+              <p class="energy" id="adventure-enemy-energy"></p>
+            </div>
+            <p class="fighter-effects" id="adventure-enemy-effects" hidden></p>
+          </article>
+        </div>
+        <section class="panel round-controls" id="adventure-controls" aria-labelledby="adventure-phase-title" hidden>
+          <h2 id="adventure-phase-title" tabindex="-1"></h2>
+          <p class="form-summary" id="adventure-phase-detail"></p>
+          <div class="moves" id="adventure-choices"></div>
+        </section>
+        <details class="panel rules" id="adventure-loadouts" hidden>
+          <summary>双方配置</summary>
+          <div class="room-loadouts">
+            <article class="panel loadout-summary" id="adventure-loadout-self">
+              <h2>我方配置</h2>
+              <p class="loadout-profile" hidden></p>
+              <dl class="loadout-stats"></dl>
+              <p class="loadout-skills"></p>
+            </article>
+            <article class="panel loadout-summary" id="adventure-loadout-enemy">
+              <h2>对手配置</h2>
+              <p class="loadout-profile" hidden></p>
+              <dl class="loadout-stats"></dl>
+              <p class="loadout-skills"></p>
+            </article>
+          </div>
+        </details>
+        <details class="panel rules history" id="adventure-history" hidden>
+          <summary>冒险记录</summary>
+          <ol id="adventure-log"></ol>
+        </details>
+        <div class="adventure-actions" id="adventure-actions" hidden>
+          <button id="adventure-end" class="button secondary" type="button">结束本次冒险</button>
+          <div class="panel" id="adventure-end-confirm" hidden>
+            <p id="adventure-end-detail">结束后，本次进度无法继续。已解锁的装扮会保留。</p>
+            <div class="loadout-actions">
+              <button id="adventure-end-cancel" class="button secondary" type="button">继续冒险</button>
+              <button id="adventure-end-submit" class="button primary" type="button" aria-describedby="adventure-end-detail">确认结束</button>
+            </div>
+          </div>
+        </div>
+        <p class="stage-credit">精灵帧来自本机宠物插件 · Anderson Porto / omnipet · <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC 4.0</a></p>
+      </section>
+
       <section id="arena" hidden aria-labelledby="arena-title">
         <header class="arena-heading">
           <div>
@@ -114,6 +232,8 @@
             <p class="fighter-label">我方</p>
             <p class="fighter-name"></p>
             <p class="fighter-meta"></p>
+            <p class="fighter-adventure-title" hidden></p>
+            <p class="fighter-adventure-effect" hidden></p>
             <span class="attribute-badge fighter-attribute" hidden></span>
             <div class="fighter-vitals" hidden>
               <p class="health-label"></p>
@@ -133,6 +253,8 @@
             <p class="fighter-label">对手</p>
             <p class="fighter-name"></p>
             <p class="fighter-meta"></p>
+            <p class="fighter-adventure-title" hidden></p>
+            <p class="fighter-adventure-effect" hidden></p>
             <span class="attribute-badge fighter-attribute" hidden></span>
             <div class="fighter-vitals" hidden>
               <p class="health-label"></p>

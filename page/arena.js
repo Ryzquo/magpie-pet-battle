@@ -1,8 +1,12 @@
+import { createAdventure } from "./adventure.js";
 import { createStage } from "./stage.js";
+import { moveCard, paintMoveCard } from "./cards.js";
 
 const byId = (id) => document.getElementById(id);
 const token = document.querySelector('meta[name="arena-token"]').content;
-const stage = createStage(document.querySelector(".board"), token, render);
+const stage = createStage(document.querySelector("#arena .board"), token, render);
+const adventure = createAdventure({ token, runAction, rerender: render, petDetails, skillDetails,
+  fighterEffects, renderLoadout, setAttributeBadge, framesFor });
 const ATTRIBUTES = { attack: "攻击", defense: "防御", vitality: "耐力" };
 const SKILLS = ["attack", "break", "shield", "counter", "charge", "heavy", "heal", "revive"];
 const EQUIPPED_COUNT = 2;
@@ -176,7 +180,7 @@ function renderPlayers(id, players, actions, petAvailable) {
     const pet = player.pet && typeof player.pet === "object" ? player.pet : null;
     setText(row.querySelector("strong"), name);
     const description = row.querySelector(".player-text p");
-    setText(description, [detail, attributeLabel(pet?.attribute)].filter(Boolean).join(" · "));
+    setText(description, [detail, attributeLabel(pet?.attribute), pet?.adventureTitle].filter(Boolean).join(" · "));
     description.hidden = !description.textContent;
     const mini = row.querySelector(".mini-sprite");
     const miniKey = pet?.speciesId || "";
@@ -255,6 +259,12 @@ function skillDetails(skill) {
   return `消耗 ${skill.cost} 体力 · 冷却 ${skill.cooldown} 手`;
 }
 
+function fighterEffects(fighter, rules) {
+  const stance = fighter?.stance;
+  return [fighter?.exposed ? "破甲" : "", fighter?.charged ? "已蓄力" : "",
+    stance ? (rules?.skills[stance]?.name || fighter?.innateSkill?.name) : ""].filter(Boolean).join(" · ");
+}
+
 function renderFighter(id, fighter, phase, rules) {
   const card = byId(id);
   card.dataset.empty = String(!fighter);
@@ -264,6 +274,17 @@ function renderFighter(id, fighter, phase, rules) {
   setText(meta, details);
   meta.hidden = !details;
   setAttributeBadge(card.querySelector(".fighter-attribute"), fighter?.pet?.attribute);
+  const title = card.querySelector(".fighter-adventure-title");
+  const effect = card.querySelector(".fighter-adventure-effect");
+  const effectName = fighter?.pet?.adventureEffect || "";
+  setText(title, fighter?.pet?.adventureTitle || "");
+  title.hidden = !title.textContent;
+  setText(effect, effectName ? `入场特效 · ${effectName}` : "");
+  effect.hidden = !effectName;
+  const aura = card.querySelector(".adventure-entry-aura");
+  const effectStyle = effectName === "星辉降临" ? "starlight" : "ember";
+  if (aura.dataset.effect !== effectStyle) aura.dataset.effect = effectStyle;
+  aura.hidden = !effectName;
 
   const vitals = card.querySelector(".fighter-vitals");
   vitals.hidden = !fighter || !Number.isFinite(fighter.maxHp) || fighter.maxHp <= 0;
@@ -290,11 +311,9 @@ function renderFighter(id, fighter, phase, rules) {
   setText(state, fighterState);
   state.hidden = !fighterState;
   const effects = card.querySelector(".fighter-effects");
-  const stance = fighter?.stance;
-  const activeEffects = [fighter?.exposed ? "破甲" : "", fighter?.charged ? "已蓄力" : "",
-    stance ? (rules?.skills[stance]?.name || fighter?.innateSkill?.name) : ""].filter(Boolean);
-  effects.hidden = stage.busy || phase !== "playing" || !activeEffects.length;
-  if (!effects.hidden) setText(effects, activeEffects.join(" · "));
+  const activeEffects = fighterEffects(fighter, rules);
+  effects.hidden = stage.busy || phase !== "playing" || !activeEffects;
+  if (!effects.hidden) setText(effects, activeEffects);
 }
 
 function renderLoadout(id, fighter, rules, phase) {
@@ -436,9 +455,7 @@ function renderLog(log) {
 }
 
 const moveButtons = Array.from({ length: EQUIPPED_COUNT + 2 }, () => {
-  const button = element("button", "move");
-  button.type = "button";
-  button.append(element("strong"), element("span", "skill-description"), element("small"), element("small", "move-state"));
+  const button = moveCard();
   byId("move-buttons").append(button);
   return button;
 });
@@ -473,17 +490,12 @@ function renderRoundControls(room, self, rules) {
       restriction = self.reviveUsed ? "本场已使用" : room.you === room.firstSeat ? "仅开局后手可用" : "倒地时可用";
     }
     const availability = [restriction, cooldown ? `冷却 ${cooldown} 手` : "", skill.cost > self.energy ? "体力不足" : ""].filter(Boolean);
-    button.dataset.move = id;
-    if (innate) button.dataset.innate = skill.effect || id;
-    else delete button.dataset.innate;
-    button.toggleAttribute("data-powered", innate && self.energy >= skill.cost);
-    button.setAttribute("aria-keyshortcuts", String(index + 1));
+    paintMoveCard(button, { id, name: skill.name, description: skill.description,
+      detail: id === "decline" ? "" : skillDetails(skill), shortcut: String(index + 1),
+      innate: innate ? skill.effect || id : "", powered: innate && self.energy >= skill.cost, speciesId: self.pet?.speciesId }, framesFor);
     button.toggleAttribute("data-selected", selected);
-    setText(button.children[0], `${index + 1} · ${innate ? "固有 · " : ""}${skill.name}`);
-    setText(button.children[1], skill.description);
-    setText(button.children[2], id === "decline" ? "" : skillDetails(skill));
     const state = stage.busy ? "结算中" : resumeSnapshot ? "正在同步" : selected ? "正在提交…" : ours ? "" : "对手行动";
-    setText(button.children[3], [state, availability.join(" · ") || (innate ? "已就绪" : "可用")].filter(Boolean).join(" · "));
+    setText(button.lastElementChild, [state, availability.join(" · ") || (innate ? "已就绪" : "可用")].filter(Boolean).join(" · "));
     if (innate && thresholdPending && !stage.busy) {
       thresholdPending = false;
       button.setAttribute("data-threshold", "");
@@ -522,8 +534,9 @@ function renderArena() {
 }
 
 function render() {
+  const onAdventure = adventure.render(status, { pending, offline: connection === "offline" });
   byId("loading").hidden = !!status;
-  byId("lobby").hidden = !status || !!status.room;
+  byId("lobby").hidden = !status || !!status.room || onAdventure;
   byId("arena").hidden = !status?.room;
   message("error", actionError);
   const serviceError = status ? pollError || status.error : "";
@@ -535,7 +548,7 @@ function render() {
     renderArena();
   } else {
     stage.update(null);
-    renderLobby();
+    if (!onAdventure) renderLobby();
   }
 }
 
@@ -563,7 +576,7 @@ function applyStatus(next) {
   if (roomChanged) announce("");
   const phaseChanged = previous?.room?.phase !== next.room?.phase;
   if (roomChanged || active?.closest("[hidden]") || (phaseChanged && document.activeElement === document.body)) {
-    const target = next.room ? byId("arena-title") : byId("lobby-title");
+    const target = next.room ? byId("arena-title") : byId(byId("adventure").hidden ? "lobby-title" : "adventure-title");
     target.focus();
   }
   if (!next.room && inviteCount > (previous?.lobby.invites.length || 0)) announce(`收到 ${inviteCount} 个挑战邀请。`);
@@ -661,6 +674,7 @@ async function runAction(action, fields) {
   render();
   try {
     const next = await requestAction({ action, ...fields });
+    if (action === "adventure-move") adventure.presentMove(next, fields.value);
     receiveStatus(next);
     if (action === "join") byId("join-code").value = "";
     if (action === "resume" && !next.room && !next.error) announce("没有可恢复的对战。");
@@ -743,6 +757,7 @@ document.addEventListener("visibilitychange", () => {
   resumeSnapshot = true;
   thresholdPending = false;
   for (const button of moveButtons) button.removeAttribute("data-threshold");
+  adventure.invalidate();
   stage.invalidate();
 });
 

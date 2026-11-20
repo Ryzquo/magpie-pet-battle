@@ -12,7 +12,7 @@ docker run -d --name magpie-pet-battle -p 3574:3574 \
   -v petbattle-wallet:/data magpie-pet-battle
 ```
 
-已有容器请在部署工具中更新镜像并配置上述卷。容器默认把余额和流水写入 `/data/wallet.sqlite`。直接运行时推荐 Node.js 24 LTS，更新 `server.mjs` 以及 `lib/` 下的 `http.mjs`、`hub.mjs`、`rooms.mjs`、`combat.mjs`、`wallet.mjs`。例如：
+已有容器请在部署工具中更新镜像并配置上述卷。容器默认把余额和流水写入 `/data/wallet.sqlite`。直接运行时推荐 Node.js 24 LTS，更新 `server.mjs` 以及 `lib/` 下的 `http.mjs`、`hub.mjs`、`rooms.mjs`、`combat.mjs`、`wallet.mjs`、`adventure-rewards.mjs`。例如：
 
 ```bash
 ARENA_WALLET_DB=/var/lib/pet-battle/wallet.sqlite node server.mjs
@@ -30,4 +30,4 @@ ARENA_WALLET_DB=/var/lib/pet-battle/wallet.sqlite node server.mjs
 curl -fsS https://<你的域名>/health
 ```
 
-预期 `protocol` 为 `3`，功能列表含 `alternating-turns`、`revival` 和 `token-wallet`。用两份独立的本机身份建房并加入。双方准备后仅先手能行动，出招后两端应显示相同的伤害和新行动席位。双方有效出招后认负，检查各自结算的应计变动、实计变动和余额。重启中继再打第二场，确认余额接续。
+预期 `protocol` 为 `3`，功能列表含 `alternating-turns`、`revival`、`token-wallet` 和 `adventure-cosmetics`。用两份独立的本机身份建房并加入。双方准备后仅先手能行动，出招后两端应显示相同的伤害和新行动席位。双方有效出招后认负，检查各自结算的应计变动、实计变动和余额。重启中继再打第二场，确认余额接续。

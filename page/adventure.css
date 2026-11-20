@@ -1,0 +1,183 @@
+.adventure-lobby {
+  margin-bottom: 14px;
+  border-inline-start: 3px solid var(--good);
+}
+
+.adventure-cosmetics { margin-top: 10px; border-top: 1px solid var(--line); }
+.adventure-cosmetics summary { min-height: 44px; padding-block: 10px; cursor: pointer; font-size: .87rem; font-weight: 650; }
+.adventure-equipment { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr)); gap: 8px; margin-top: 8px; }
+.adventure-equipment label { display: grid; gap: 4px; min-width: 0; color: var(--muted); font-size: .85rem; }
+.adventure-equipment select { min-width: 0; min-height: 44px; padding: 6px 9px; font: inherit; color: var(--ink); background: var(--soft); border: 1px solid var(--line); border-radius: 10px; }
+.adventure-prep .skill-fields { margin-block: 10px; }
+.adventure-prep > .button { margin-top: 10px; }
+.board.battle-stage.adventure-board {
+  --scene-height: clamp(200px, 42vw, 260px);
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 0 18px;
+  padding: 0 0 8px;
+  color: var(--ink);
+  background: transparent;
+  text-align: left;
+}
+#adventure-scenery {
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 auto;
+  width: 100%;
+  height: var(--scene-height);
+  border-radius: 15px;
+  background: #536c5c url("./adventure-forest.svg") center bottom / cover no-repeat;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+#adventure-scene-label {
+  position: absolute;
+  inset: 10px auto auto 10px;
+  margin: 0;
+  padding: 3px 8px;
+  color: #fff;
+  background: #17232de0;
+  border-radius: 6px;
+  font-size: .75rem;
+  pointer-events: none;
+}
+.adventure-board .fighter { min-width: 0; text-align: left; }
+.adventure-board .fighter-self { grid-column: 1; grid-row: 1; }
+.adventure-board .fighter-opponent { grid-column: 2; grid-row: 1; }
+.adventure-board.battle-stage .fighter > .stage-portrait {
+  width: clamp(112px, 25vw, 180px);
+  height: var(--scene-height);
+  aspect-ratio: auto;
+  margin: 0 auto 8px;
+  overflow: visible;
+}
+.adventure-board .stage-pet { inset: auto 0 18%; height: 57%; filter: sepia(.12) saturate(.85); }
+.adventure-board.battle-stage .fighter > .stage-portrait::before {
+  inset: auto 17% 18%; height: 5%; border: 0;
+  background: #263d32a8; box-shadow: 0 2px 5px #263d3266;
+}
+.adventure-board .fighter-label { display: none; }
+.adventure-board .fighter-name { font-size: .88rem; }
+.adventure-board .fighter-meta, .adventure-board .energy, .adventure-board .fighter-effects { color: var(--muted); }
+.adventure-board .fighter-vitals { margin: 3px 0; }
+.adventure-board .health { width: 100%; height: 5px; margin: 3px 0; --fill: #619a6d; }
+.adventure-board .fighter-opponent .health { --fill: #d58c5c; }
+.adventure-board .health::-webkit-meter-bar { background: var(--line); }
+.adventure-board .board-center {
+  grid-column: 1 / -1; grid-row: 2; text-align: center; padding: 8px 0 0;
+  border: 0; color: var(--muted);
+}
+.adventure-board .board-center h2 { display: inline; font-size: .8rem; color: var(--ink); }
+.adventure-board .board-center p { display: inline; margin: 0 0 0 6px; color: var(--muted); font-size: .8rem; }
+.adventure-board .stage-badge { margin: 0 0 4px; }
+.adventure-board .stage-frames img { image-rendering: pixelated; }
+.adventure-board .stage-amount { inset-block-start: 28%; }
+
+.adventure-carapace-flash,
+.adventure-vampire-trail {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+}
+.adventure-carapace-flash {
+  inset: auto 12% 22%;
+  height: 43%;
+  filter: drop-shadow(0 1px 2px #152f33);
+}
+.adventure-carapace-flash::before,
+.adventure-carapace-flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(50% 0, 91% 22%, 88% 66%, 50% 100%, 12% 66%, 9% 22%);
+}
+.adventure-carapace-flash::before { background: #ddfff7; }
+.adventure-carapace-flash::after {
+  inset: 4px;
+  background: repeating-linear-gradient(145deg, #15494bd9 0 9px, #65beafcf 10px 12px, #235d60dc 13px 20px);
+}
+.stage-portrait[data-carapace] .adventure-carapace-flash { animation: adventure-carapace 280ms ease-out both; }
+
+.adventure-vampire-trail {
+  inset: auto auto 46% 50%;
+  width: 8px;
+  height: 8px;
+  color: #ea97dd;
+}
+.adventure-vampire-trail::before,
+.adventure-vampire-trail::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #fff0fc;
+  box-shadow: 0 0 8px 3px currentColor, 9px 5px 0 -2px currentColor, -10px 4px 0 -2px currentColor;
+}
+.adventure-vampire-trail::after { transform: translate(3px, -9px) scale(.6); }
+.stage-portrait[data-vampire] .adventure-vampire-trail { animation: adventure-vampire 260ms ease-in-out both; }
+
+@keyframes adventure-carapace {
+  0% { opacity: 0; transform: scale(.78); }
+  22%, 52% { opacity: .9; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.12); }
+}
+@keyframes adventure-vampire {
+  0% { opacity: 0; transform: translate(-50%, 0); }
+  20% { opacity: 1; }
+  55% { opacity: 1; transform: translate(calc(var(--stage-direction) * var(--stage-range) * .55 - 50%), -20px); }
+  100% { opacity: 0; transform: translate(calc(var(--stage-direction) * var(--stage-range) - 50%), 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage-portrait .adventure-carapace-flash,
+  .stage-portrait .adventure-vampire-trail { animation: none !important; }
+}
+.adventure-board .attribute-badge[data-attribute] { color: var(--accent); border-color: var(--line); }
+@media (max-width: 440px) {
+  .board.battle-stage.adventure-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .adventure-board .board-center { grid-row: 2; }
+}
+#adventure-loadouts { margin-top: 12px; }
+.adventure-actions { margin-top: 12px; }
+#adventure-end-confirm p { color: var(--muted); font-size: .88rem; }
+
+.fighter-adventure-title { margin: 4px 0 0; color: #ffe1a6; font-size: .8rem; font-weight: 700; }
+.fighter-adventure-effect { color: var(--board-muted); font-size: .72rem; }
+.adventure-entry-aura {
+  --aura: #ffc177;
+  position: absolute;
+  inset: 6% 5% 8%;
+  border: 2px solid var(--aura);
+  border-radius: 45%;
+  box-shadow: inset 0 0 13px var(--aura), 0 0 14px var(--aura);
+  opacity: .48;
+  pointer-events: none;
+  animation: adventure-entry 740ms ease-out both;
+}
+.adventure-entry-aura::before,
+.adventure-entry-aura::after {
+  content: "";
+  position: absolute;
+  inset: 1% auto auto 12%;
+  width: 9px;
+  aspect-ratio: 1;
+  background: var(--aura);
+  rotate: 45deg;
+  box-shadow: 0 0 10px var(--aura);
+}
+.adventure-entry-aura::after { inset: auto 9% 6% auto; width: 6px; }
+.adventure-entry-aura[data-effect="starlight"] { --aura: #b9d6ff; border-radius: 50%; border-style: dashed; }
+@keyframes adventure-entry {
+  0% { opacity: .2; transform: scale(.72); }
+  34% { opacity: 1; }
+  100% { opacity: .48; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .adventure-entry-aura { animation: none; }
+}
+@media (forced-colors: active) {
+  .fighter-adventure-title, .fighter-adventure-effect { color: CanvasText; }
+  .adventure-entry-aura { border-color: Highlight; opacity: 1; animation: none; }
+}

@@ -68,7 +68,7 @@ test('health reports the protocol and features the relay supports', async () => 
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.deepEqual(body, { ok: true, protocol: 3,
-      features: ['combat-stats', 'innate-skills', 'alternating-turns', 'revival', 'token-wallet'] });
+      features: ['combat-stats', 'innate-skills', 'alternating-turns', 'revival', 'token-wallet', 'adventure-cosmetics'] });
     for (const version of [1, 2]) {
       for (const route of ['room', 'announce', 'invite']) {
         const old = await fetch(`http://127.0.0.1:${server.address().port}/arena/v${version}/${route}`, { method: 'POST' });

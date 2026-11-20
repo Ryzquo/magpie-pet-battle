@@ -10,16 +10,21 @@ function layer(parent, tag, className) {
 }
 
 function makeFighter(board, side) {
-  const card = board.querySelector(`#fighter-${side}`);
+  const card = board.querySelector(`.fighter-${side}`);
   const portrait = card.querySelector(":scope > .portrait");
   portrait.classList.add("stage-portrait");
   portrait.setAttribute("aria-hidden", "true");
   portrait.replaceChildren();
+  layer(portrait, "span", "adventure-entry-aura").hidden = true;
   const body = layer(portrait, "span", "stage-pet");
   const art = layer(body, "span", "stage-art");
   layer(art, "span", "stage-face");
   const sprite = layer(body, "span", "stage-sprite");
   layer(portrait, "span", "stage-effect");
+  if (board.classList.contains("adventure-board")) {
+    layer(portrait, "span", "adventure-carapace-flash");
+    layer(portrait, "span", "adventure-vampire-trail");
+  }
   const amount = layer(portrait, "span", "stage-amount");
   const badge = layer(card, "p", "stage-badge");
   portrait.after(badge);
@@ -114,7 +119,9 @@ export function createStage(board, token, onComplete) {
     heldHp = null;
     delete board.dataset.shake;
     for (const { portrait, amount } of fighters) {
-      for (const key of ["move", "effect", "beat", "hit", "impact", "counter", "strike"]) delete portrait.dataset[key];
+      for (const key of ["move", "effect", "beat", "hit", "impact", "counter", "strike", "carapace", "vampire"]) {
+        delete portrait.dataset[key];
+      }
       amount.textContent = "";
       delete amount.dataset.kind;
     }
@@ -140,10 +147,12 @@ export function createStage(board, token, onComplete) {
         const move = action.name || rules?.skills?.[action.move]?.name || ({ decline: "放弃复活", timeout: "超时" })[action.move] || "超时";
         parts.push(`第 ${action.turn} 手`, move);
         if (resolved && action.healing) parts.push(`恢复 ${action.healing}`);
+        if (resolved && action.vampireHealing) parts.push(`汲血 +${action.vampireHealing}`);
         if (resolved && action.penalty) parts.push(`超时扣血 ${action.penalty}`);
         if (resolved && action.counter) parts.push(`受反击 ${action.counter}`);
       } else if (action && resolved) {
         if (action.damage) parts.push(`受伤 ${action.damage}`);
+        if (action.carapacePrevented) parts.push(`甲片减伤 ${action.carapacePrevented}`);
         if (action.counter) parts.push(`反击 ${action.counter}`);
       }
       badge.hidden = !parts.length;
@@ -153,7 +162,7 @@ export function createStage(board, token, onComplete) {
     });
   }
 
-  function play(room, rules) {
+  function play(room, rules, complete = onComplete) {
     const action = room.lastAction;
     const { actor, hpBefore, hpAfter, damage, counter, penalty, healing } = action;
     const target = 1 - actor;
@@ -187,6 +196,8 @@ export function createStage(board, token, onComplete) {
       if (damage) float(receiver, damage, "hit");
       if (penalty) float(source, penalty, "hit");
       if (healing) float(source, healing, "heal");
+      if (action.carapacePrevented) receiver.portrait.dataset.carapace = "";
+      if (action.vampireHealing) receiver.portrait.dataset.vampire = "";
       const values = [...hpAfter];
       if (counter) values[actor] = Math.min(room.players[actor].maxHp, hpBefore[actor] + healing);
       showHealth(room, values);
@@ -206,8 +217,20 @@ export function createStage(board, token, onComplete) {
     }
     at(impact + (counter ? 555 : 305), () => {
       clearMotion();
-      onComplete();
+      complete();
     });
+  }
+
+  function playSequence(room, rules, actions) {
+    if (!actions?.length || document.hidden || reducedMotion.matches) return;
+    update({ ...room, phase: "playing", lastAction: null }, rules);
+    let index = 0;
+    const next = () => {
+      const action = actions[index++];
+      if (action) play({ ...room, lastAction: action }, rules, next);
+      else onComplete();
+    };
+    next();
   }
 
   function update(room, rules, online = true) {
@@ -240,5 +263,5 @@ export function createStage(board, token, onComplete) {
     onComplete();
   }
   reducedMotion.addEventListener("change", invalidate);
-  return { update, invalidate, get busy() { return !!heldHp; }, visualHp: (seat, hp) => heldHp?.[seat] ?? hp };
+  return { update, playSequence, invalidate, get busy() { return !!heldHp; }, visualHp: (seat, hp) => heldHp?.[seat] ?? hp };
 }

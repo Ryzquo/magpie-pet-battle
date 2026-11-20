@@ -3,6 +3,18 @@
   border-inline-start: 3px solid var(--good);
 }
 
+.adventure-beta {
+  display: inline-block;
+  vertical-align: middle;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 650;
+}
+
 .adventure-cosmetics { margin-top: 10px; border-top: 1px solid var(--line); }
 .adventure-cosmetics summary { min-height: 44px; padding-block: 10px; cursor: pointer; font-size: .87rem; font-weight: 650; }
 .adventure-equipment { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr)); gap: 8px; margin-top: 8px; }
